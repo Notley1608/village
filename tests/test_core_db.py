@@ -10,6 +10,7 @@ TABLES = {
     "ledger_entries",
     "outcomes",
     "polish_notes",
+    "processed_emails",
 }
 
 

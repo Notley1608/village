@@ -42,7 +42,7 @@ village/
 │   ├── directory/      # vault topic -> money/hub pages -> Astro build -> free static deploy
 │   └── shorts/         # topic -> script -> free TTS -> stock loops + captions -> preview -> YouTube (OAuth)
 ├── plumbing/
-│   ├── telegram.py     # minimal pings + approve/flag/rework buttons
+│   ├── mail.py         # email digest + reply-to-approve/flag channel
 │   ├── mining.py       # competitor scraping + trend signals -> vault nuggets
 │   └── deploy.py       # build + publish
 └── web/                # FastAPI dashboard: versioned markdown polish editor, ledger, vault, monthly review
@@ -50,7 +50,7 @@ village/
 
 **Schema core tables:** `residents`, `nuggets` (+tags/sources/spawn-links), `drafts` (+version history), `queue_events`, `ledger_entries`, `outcomes` (views/hits/gigs), `polish_notes`.
 
-**Telegram semantics:** *Approve* ships; *Flag* triggers one auto-rework with your note, then kill; failures ping, caps/digests/skips stay silent.
+**Channel semantics (v1: email digest):** you get a review-draft email and reply `approve <id>` / `flag <id> <rework note>`; IMAP uid tracking makes polling idempotent. *Approve* ships; *Flag* records the reject + note (one auto-rework loop, then kill). Failures get a direct alert email; caps/digests/skips stay silent. (Telegram was the original pick; swapped for email after token-setup friction — no accounts to create.)
 
 **Vault research:** you seed ~30 min/wk (5-8 links/angles per resident) -> mining agent expands via competitor scraping + free trend signals. Nugget graph means one fact feeds a money page, a short's script, and a service asset.
 

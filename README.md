@@ -10,7 +10,7 @@ See `PLAN.md` for the full architecture spec.
 ```
 core/        runtime: scheduler, queue, ledger, vault, db
 residents/   one subdir per revenue property
-plumbing/    telegram bot, topic mining, deploy
+plumbing/    email digest (approval channel), topic mining, deploy
 web/         FastAPI review/polish dashboard
 ```
 
@@ -20,8 +20,31 @@ web/         FastAPI review/polish dashboard
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 python -m core.db          # initialise store.sqlite
 ```
+
+## Review channel (email digest)
+
+Drafts pile up in the review queue; you get a digest email and reply
+`approve <id>` or `flag <id> <rework note>`.
+
+One-time setup (Gmail):
+
+1. Enable 2-Step Verification on your Google account.
+2. Google Account > Security > App passwords > create one for "Mail".
+3. Put `MAIL_USER` (your address), `MAIL_APP_PASSWORD` (the 16-char app
+   password), and `MAIL_TO` in `.env`.
+
+Usage:
+
+```bash
+.venv/bin/python -m plumbing.mail digest   # send today's review digest
+.venv/bin/python -m plumbing.mail poll     # apply reply commands from inbox
+```
+
+The scheduler will run these automatically; IMAP `uid` tracking in SQLite
+(`processed_emails`) makes polling idempotent.
 
 ## Tests
 

@@ -1,3 +1,3 @@
-from . import telegram, mining, deploy
+from . import mail, mining, deploy
 
-__all__ = ["telegram", "mining", "deploy"]
+__all__ = ["mail", "mining", "deploy"]

@@ -78,6 +78,14 @@ CREATE TABLE IF NOT EXISTS polish_notes (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS processed_emails (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    mailbox       TEXT NOT NULL,
+    uid           INTEGER NOT NULL,
+    processed_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (mailbox, uid)
+);
+
 CREATE INDEX IF NOT EXISTS idx_drafts_status   ON drafts(resident_id, status);
 CREATE INDEX IF NOT EXISTS idx_nuggets_tags    ON nuggets(resident_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_resident ON ledger_entries(resident_id);
