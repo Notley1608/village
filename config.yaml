@@ -35,9 +35,26 @@ residents:
     launch_budget_days: 90
     publish_target: astro_static
     cadence_per_week: 3
+    autonomous: true  # scheduler may draft for this resident; publish stays human
     launch_volume:
       money_pages: 10
       hub_pages: 5
+    site:
+      name: Tooldeck
+      tagline: AI & automation tools by use case
+      url: https://tooldeck.example.com  # replace with real domain at Phase 2 deploy
+      # Affiliate links: tool name -> your tracking URL. Empty until you join programs.
+      # Links fall back to the tool's plain URL when absent.
+      affiliate_links: {}
+      money_keywords:
+        - AI meeting notes
+        - AI resume builder
+        - AI code review
+        - AI email writing
+        - AI image generation
+        - AI video editing
+        - AI customer support
+        - AI spreadsheet automation
   - name: shorts
     zone: gray
     niche: history_and_weird_facts
