@@ -1,0 +1,61 @@
+village:
+  timezone: Australia/Sydney
+  model: gemini-2.0-flash
+  free_tier_first: true
+
+ledger:
+  daily_cap_default_usd: 0.00
+  launch_budget_days:
+    directory: 90
+    shorts: 120
+    resume_studio: 0
+
+queue:
+  auto_rework_attempts: 1
+  states:
+    - pending
+    - approved
+    - published
+    - rejected
+    - rework
+    - killed
+
+residents:
+  - name: resume_studio
+    zone: clean
+    niche: resume_and_linkedin
+    daily_cap_usd: 0.00
+    launch_budget_days: 0
+    publish_target: manual  # you ship to client; PayPal invoice
+    cadence_per_week: 2
+  - name: directory
+    zone: gray
+    niche: ai_and_automation_tools
+    daily_cap_usd: 0.00
+    launch_budget_days: 90
+    publish_target: astro_static
+    cadence_per_week: 3
+    launch_volume:
+      money_pages: 10
+      hub_pages: 5
+  - name: shorts
+    zone: gray
+    niche: history_and_weird_facts
+    daily_cap_usd: 0.00
+    launch_budget_days: 120
+    publish_target: youtube_oauth
+    cadence_per_week: 3
+    production:
+      style: stock_loops_captions
+      tts: free_local
+
+telegram:
+  pings: minimal  # ready-to-review + hard failures only
+  rework_on_flag: true
+  approve_button: true
+  flag_button: true
+
+vault:
+  model: nugget_graph
+  copyback_on_polish: true
+  editable_copyback: true
