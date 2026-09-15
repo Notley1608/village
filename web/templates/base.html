@@ -47,7 +47,7 @@
     <div class="sidebar-foot">
       <div class="row">Income <b class="money">${{ "%.2f"|format(income_total) }}</b></div>
       <div class="row">Pending <b>{{ pending_count }}</b></div>
-      <div class="row"><a href="/logout">Sign out</a></div>
+      {% if auth_on %}<div class="row"><a href="/logout">Sign out</a></div>{% endif %}
     </div>
   </aside>
 

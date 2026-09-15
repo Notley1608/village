@@ -53,6 +53,7 @@ def _base_ctx(request):
     return {
         "request": request,
         "active": _active_from_path(request.url.path),
+        "auth_on": bool(TOKEN),
         "pending_count": pending_count,
         "income_total": income_total,
         "msg": request.query_params.get("msg"),
