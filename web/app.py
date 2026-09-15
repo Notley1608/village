@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from core import db, queue, vault
+from residents import resume_studio
 from web import seed
 
 load_dotenv()
@@ -109,6 +110,9 @@ def overview(request: Request):
     spend_total = conn.execute(
         "SELECT COALESCE(SUM(amount_usd), 0) AS s FROM ledger_entries"
     ).fetchone()["s"]
+    income_total = conn.execute(
+        "SELECT COALESCE(SUM(value), 0) AS s FROM outcomes WHERE metric = 'revenue_usd'"
+    ).fetchone()["s"]
     events = conn.execute(
         """
         SELECT e.*, d.kind AS draft_kind, r.name AS resident_name
@@ -129,6 +133,7 @@ def overview(request: Request):
             "totals_pending": totals_pending,
             "spend_today": spend_today,
             "spend_total": spend_total,
+            "income_total": income_total,
             "events": events,
         },
     )
@@ -262,6 +267,119 @@ def toggle_copyback(request: Request, draft_id: int, note: str = Form("")):
     return RedirectResponse(f"/draft/{draft_id}", status_code=303)
 
 
+@app.get("/jobs")
+def jobs_page(request: Request):
+    conn = _conn()
+    jobs = resume_studio.list_jobs(conn)
+    rows = []
+    for job in jobs:
+        drafts = conn.execute(
+            "SELECT COUNT(*) AS n, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending "
+            "FROM drafts WHERE job_id = ?",
+            (job["id"],),
+        ).fetchone()
+        rows.append((job, drafts["n"], drafts["pending"] or 0))
+    conn.close()
+    return templates.TemplateResponse(
+        "jobs.html", {"request": request, "title": "Jobs", "rows": rows}
+    )
+
+
+@app.get("/job/new")
+def job_new_page(request: Request):
+    return templates.TemplateResponse(
+        "job_new.html", {"request": request, "title": "New job"}
+    )
+
+
+@app.post("/job/new")
+def job_create(
+    request: Request,
+    client_name: str = Form(...),
+    target_role: str = Form(...),
+    resume_text: str = Form(...),
+    contact: str = Form(""),
+    answers: str = Form(""),
+):
+    conn = _conn()
+    answers_dict = None
+    lines = [line.strip() for line in answers.splitlines() if line.strip()]
+    if lines:
+        answers_dict = {}
+        for line in lines:
+            if ":" in line:
+                key, _, value = line.partition(":")
+                answers_dict[key.strip()] = value.strip()
+    job_id = resume_studio.add_job(
+        conn, client_name, target_role, resume_text, contact=contact or None,
+        answers=answers_dict or None,
+    )
+    conn.close()
+    return RedirectResponse(f"/job/{job_id}", status_code=303)
+
+
+@app.get("/job/{job_id}")
+def job_page(request: Request, job_id: int):
+    conn = _conn()
+    job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if job is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="job not found")
+    drafts = resume_studio.job_drafts(conn, job_id)
+    conn.close()
+    return templates.TemplateResponse(
+        "job.html",
+        {
+            "request": request,
+            "title": f"Job {job_id}",
+            "job": job,
+            "drafts": drafts,
+        },
+    )
+
+
+@app.post("/job/{job_id}/generate")
+def job_generate(request: Request, job_id: int):
+    conn = _conn()
+    try:
+        resume_studio.produce(conn, job_id, run_llm=False)
+    except KeyError:
+        conn.close()
+        raise HTTPException(status_code=404, detail="job not found")
+    conn.close()
+    return RedirectResponse(f"/job/{job_id}", status_code=303)
+
+
+@app.post("/job/{job_id}/ship")
+def job_ship(request: Request, job_id: int, amount_usd: float = Form(...)):
+    conn = _conn()
+    try:
+        resume_studio.ship_job(conn, job_id, amount_usd)
+    except KeyError:
+        conn.close()
+        raise HTTPException(status_code=404, detail="job not found")
+    except ValueError as exc:
+        conn.close()
+        raise HTTPException(status_code=400, detail=str(exc))
+    conn.close()
+    return RedirectResponse(f"/job/{job_id}", status_code=303)
+
+
+@app.post("/job/{job_id}/lost")
+def job_lost(request: Request, job_id: int):
+    conn = _conn()
+    try:
+        resume_studio.mark_lost(conn, job_id)
+    except KeyError:
+        conn.close()
+        raise HTTPException(status_code=404, detail="job not found")
+    except ValueError as exc:
+        conn.close()
+        raise HTTPException(status_code=400, detail=str(exc))
+    conn.close()
+    return RedirectResponse(f"/job/{job_id}", status_code=303)
+
+
 @app.get("/vault")
 def vault_page(request: Request, q: str = "", tag: str = ""):
     conn = _conn()
@@ -292,6 +410,9 @@ def ledger_page(request: Request):
         GROUP BY r.id ORDER BY r.id
         """
     ).fetchall()
+    income_total = conn.execute(
+        "SELECT COALESCE(SUM(value), 0) AS s FROM outcomes WHERE metric = 'revenue_usd'"
+    ).fetchone()["s"]
     outcomes = conn.execute(
         """
         SELECT o.*, r.name AS resident
@@ -307,6 +428,7 @@ def ledger_page(request: Request):
             "title": "Ledger",
             "rows": rows,
             "per_resident": per_resident,
+            "income_total": income_total,
             "outcomes": outcomes,
         },
     )

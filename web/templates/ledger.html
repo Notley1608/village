@@ -2,6 +2,11 @@
 {% block content %}
 <h1>Ledger</h1>
 
+<h2>Income</h2>
+<table>
+  <tr><td class="money">${{ "%.2f"|format(income_total) }}</td></tr>
+</table>
+
 <h2>Spend totals per resident</h2>
 <table>
   <tr><th>Resident</th><th>Total spend</th></tr>

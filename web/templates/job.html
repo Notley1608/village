@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/jobs">&larr; Jobs</a></p>
+<h1>Job #{{ job.id }} — {{ job.client_name }}</h1>
+
+<p>
+  <span class="badge">{{ job.status }}</span>
+  Target: <strong>{{ job.target_role }}</strong>
+  {% if job.contact %}&middot; {{ job.contact }}{% endif %}
+</p>
+
+<h2>Actions</h2>
+<form method="post" action="/job/{{ job.id }}/generate" onsubmit="return confirm('Generate offline drafts for this job?')">
+  <button type="submit">Generate drafts (offline)</button>
+  <span class="muted">or via CLI: <code>python -m residents.resume_studio draft {{ job.id }} --llm</code></span>
+</form>
+
+{% if job.status == 'shipped' %}
+<p class="muted">Job shipped. Fee recorded on the Ledger.</p>
+{% elif job.status == 'lost' %}
+<p class="muted">Job marked lost. You can still generate drafts if needed.</p>
+{% else %}
+<form method="post" action="/job/{{ job.id }}/ship" class="inline">
+  <label for="amount">Fee received ($)</label>
+  <input type="number" name="amount_usd" id="amount" step="0.01" min="0" required placeholder="60">
+  <button type="submit">Mark shipped + record income</button>
+</form>
+<form method="post" action="/job/{{ job.id }}/lost" class="inline"
+      onsubmit="return confirm('Mark this job as lost?')">
+  <button type="submit" class="danger">Mark lost</button>
+</form>
+{% endif %}
+
+{% if drafts %}
+<h2>Drafts</h2>
+<table class="table">
+  <thead><tr><th>#</th><th>Kind</th><th>Status</th><th>Version</th><th></th></tr></thead>
+  <tbody>
+    {% for d in drafts %}
+    <tr>
+      <td>{{ d.id }}</td>
+      <td>{{ d.kind }}</td>
+      <td><span class="badge">{{ d.status }}</span></td>
+      <td>{{ d.version }}</td>
+      <td><a href="/draft/{{ d.id }}">review</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No drafts yet. Nothing is generated until you trigger it.</p>
+{% endif %}
+
+<h2>Resume</h2>
+<pre class="pre">{{ job.resume_text }}</pre>
+
+{% if job.answers %}
+<h2>Answers</h2>
+<pre class="pre">{{ job.answers }}</pre>
+{% endif %}
+{% endblock %}

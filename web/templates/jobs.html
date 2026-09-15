@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Jobs <a class="btn" href="/job/new">+ New job</a></h1>
+
+{% if rows %}
+<table class="table">
+  <thead>
+    <tr><th>#</th><th>Client</th><th>Target role</th><th>Status</th><th>Drafts</th><th>Pending</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for job, n, pending in rows %}
+    <tr>
+      <td>{{ job.id }}</td>
+      <td>{{ job.client_name }}</td>
+      <td>{{ job.target_role }}</td>
+      <td><span class="badge">{{ job.status }}</span></td>
+      <td>{{ n }}</td>
+      <td>{{ pending }}</td>
+      <td><a href="/job/{{ job.id }}">open</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No jobs yet. <a href="/job/new">Add your first client</a>.</p>
+{% endif %}
+{% endblock %}

@@ -79,4 +79,12 @@ Resume offer/price · exact affiliate program shortlist (payout-country check do
 ## Deployment
 - Runtime: single $5 VPS (Hetzner/DO), Python 3.9+, systemd timers, no Docker.
 - Directory: Astro statically generated, deployed free (Netlify/GitHub Pages) from the VPS.
+
+## Resume studio (Phase 1, built — human-gated)
+- `jobs` table stores client intake (name, contact, target role, resume text, Q&A). No agents run on their own.
+- Manual triggers only — you keep the trigger:
+  - UI: `/jobs` -> New job -> "Generate drafts (offline)".
+  - CLI: `python -m residents.resume_studio add-job ...` then `draft <id>` (offline) or `draft <id> --llm` (Gemini).
+- Produces 3 drafts per job (`resume_rewrite`, `linkedin_summary`, `cover_letter`), pending in the queue, linked to the job. Offline drafts are placeholders; `--llm` is required to spend tokens (Gemini from `.env` `GEMINI_API_KEY`).
+- Offer/price + sales copy still open (see slots above).
 - Dev: macOS local, same codebase.

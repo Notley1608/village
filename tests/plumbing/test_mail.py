@@ -2,6 +2,16 @@ from core import queue
 from plumbing import mail
 
 
+def test_app_password_strips_spaces(monkeypatch):
+    monkeypatch.setenv("MAIL_APP_PASSWORD", "fmfk nskn jnrs lsbb")
+    assert mail.app_password() == "fmfknsknjnrslsbb"
+
+
+def test_app_password_missing_is_empty(monkeypatch):
+    monkeypatch.delenv("MAIL_APP_PASSWORD", raising=False)
+    assert mail.app_password() == ""
+
+
 def test_parse_approve():
     assert mail.parse_command("approve 3\n") == ("approve", 3, None)
 
@@ -40,17 +50,45 @@ def test_apply_flag_records_reject_and_note(db_conn, resident):
 
 
 def test_digest_body_lists_pending(db_conn, resident):
-    queue.create_draft(db_conn, resident["id"], "money_page", "The ten best AI widgets")
+    queue.create_draft(db_conn, resident["id"], "money_page", "The ten best AI widgets for freelancers in 2026.")
     drafts = db_conn.execute(
-        "SELECT * FROM drafts WHERE status = 'pending' ORDER BY created_at"
+        """
+        SELECT d.*, r.name AS resident_name
+        FROM drafts d JOIN residents r ON r.id = d.resident_id
+        WHERE d.status = 'pending' ORDER BY d.created_at
+        """
     ).fetchall()
     body = mail.digest_body(drafts)
-    assert "DRAFT 1" in body
-    assert "money_page" in body
+    assert "1 draft(s) to review" in body
+    assert "Money page" in body
+    assert f"— test_resident (created " in body
+    assert "approve 1" in body
+    assert "flag 1 <note>" in body
 
 
 def test_digest_body_empty():
     assert mail.digest_body([]) == "No drafts waiting for review."
+
+
+def test_html_body_renders_cards_and_escapes(db_conn, resident):
+    queue.create_draft(db_conn, resident["id"], "cover_letter", '<script>alert("x")</script> sample')
+    drafts = db_conn.execute("SELECT * FROM drafts WHERE status = 'pending'").fetchall()
+    html = mail.html_body(drafts)
+    assert "Cover letter" in html
+    assert "test_resident" in html
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+    assert "approve 1</code>" in html
+
+
+def test_snippet_truncates():
+    assert mail._snippet("a" * 500, length=200).endswith("…")
+    assert len(mail._snippet("a" * 500, length=200)) == 200
+
+
+def test_kind_label_fallback():
+    assert mail._kind_label("resume_rewrite") == "Resume rewrite"
+    assert mail._kind_label("unknown_thing") == "Unknown Thing"
 
 
 def test_processed_marking_is_idempotent(db_conn):

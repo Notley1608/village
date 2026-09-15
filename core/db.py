@@ -32,12 +32,24 @@ CREATE TABLE IF NOT EXISTS drafts (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     resident_id       INTEGER NOT NULL REFERENCES residents(id),
     nugget_id         INTEGER REFERENCES nuggets(id),
+    job_id            INTEGER REFERENCES jobs(id),
     kind              TEXT NOT NULL,
     payload           TEXT NOT NULL,
     version           INTEGER NOT NULL DEFAULT 1,
     status            TEXT NOT NULL DEFAULT 'pending',
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_name  TEXT NOT NULL,
+    contact      TEXT,
+    target_role  TEXT NOT NULL,
+    resume_text  TEXT NOT NULL,
+    answers      TEXT,
+    status       TEXT NOT NULL DEFAULT 'new',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS queue_events (
@@ -93,17 +105,25 @@ CREATE INDEX IF NOT EXISTS idx_outcomes_metric ON outcomes(resident_id, metric);
 """
 
 
-def connect(path: str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
+def connect(path: str = None) -> sqlite3.Connection:
+    conn = sqlite3.connect(path if path is not None else DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    cols = [row["name"] for row in conn.execute("PRAGMA table_info(drafts)").fetchall()]
+    if "job_id" not in cols:
+        conn.execute("ALTER TABLE drafts ADD COLUMN job_id INTEGER REFERENCES jobs(id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_drafts_job ON drafts(job_id)")
+
+
 def init_db(path: str = DB_PATH) -> None:
     conn = connect(path)
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
     conn.close()
 

@@ -4,9 +4,10 @@ from core import config as core_config
 from core import db, ledger, queue, vault
 
 
-def seed_residents(config_path=None):
+def seed_residents(config_path=None, conn=None):
     cfg = core_config.load_config(config_path) if config_path else core_config.load_config()
-    conn = db.connect()
+    owns = conn is None
+    conn = conn or db.connect()
     try:
         for resident in core_config.residents(cfg):
             conn.execute(
@@ -23,7 +24,8 @@ def seed_residents(config_path=None):
             )
         conn.commit()
     finally:
-        conn.close()
+        if owns:
+            conn.close()
     return f"seeded residents from config"
 
 

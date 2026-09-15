@@ -1,6 +1,6 @@
 village:
   timezone: Australia/Sydney
-  model: gemini-2.0-flash
+  model: gemini-3.6-flash
   free_tier_first: true
 
 ledger:

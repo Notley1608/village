@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>New job</h1>
+<form method="post" action="/job/new" class="stack">
+  <label>Client name
+    <input name="client_name" required placeholder="Jane Doe">
+  </label>
+  <label>Contact (optional)
+    <input name="contact" placeholder="jane@example.com">
+  </label>
+  <label>Target role
+    <input name="target_role" required placeholder="Senior Data Engineer">
+  </label>
+  <label>Current resume / experience
+    <textarea name="resume_text" required rows="10" placeholder="Paste their current resume or experience here..."></textarea>
+  </label>
+  <label>Answers to intake questions (optional, one per line as <code>Question: Answer</code>)
+    <textarea name="answers" rows="5" placeholder="Years of experience: 6&#10;Desired location: Remote&#10;Salary expectation: $130k"></textarea>
+  </label>
+  <button type="submit">Save job</button>
+</form>
+<p class="muted">Saving only stores the intake. Drafts are generated only when you press &quot;Generate drafts&quot; on the job page.</p>
+{% endblock %}
