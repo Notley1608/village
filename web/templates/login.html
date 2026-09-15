@@ -3,17 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Login · Village</title>
+  <title>Sign in · Village</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%234f46e5'/%3E%3Cpath d='M20 44V24l12 16 12-16v20' stroke='white' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}">
 </head>
 <body class="login-body">
 <main class="login-card">
+  <span class="logo" style="filter: drop-shadow(0 6px 16px rgba(99,102,241,.5))">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V9l7-5 7 5v11"/><path d="M9 20v-5h6v5"/></svg>
+  </span>
   <h1>Village</h1>
-  {% if error %}<p class="error">Wrong token.</p>{% endif %}
+  <p class="lead">Your agent village command center.</p>
+  {% if error %}<p class="error">Wrong token — try again.</p>{% endif %}
   <form method="post" action="/login">
     <input type="hidden" name="next" value="{{ next }}">
-    <input type="password" name="key" placeholder="dashboard token" autofocus>
-    <button type="submit">Enter</button>
+    <label for="key">Dashboard token</label>
+    <input type="password" name="key" id="key" placeholder="••••••••" autofocus>
+    <button class="btn primary" type="submit">Enter command center</button>
   </form>
 </main>
 </body>

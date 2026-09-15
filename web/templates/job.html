@@ -1,61 +1,73 @@
 {% extends "base.html" %}
 {% block content %}
-<p><a href="/jobs">&larr; Jobs</a></p>
-<h1>Job #{{ job.id }} — {{ job.client_name }}</h1>
-
-<p>
-  <span class="badge">{{ job.status }}</span>
-  Target: <strong>{{ job.target_role }}</strong>
-  {% if job.contact %}&middot; {{ job.contact }}{% endif %}
-</p>
-
-<h2>Actions</h2>
-<form method="post" action="/job/{{ job.id }}/generate" onsubmit="return confirm('Generate offline drafts for this job?')">
-  <button type="submit">Generate drafts (offline)</button>
-  <span class="muted">or via CLI: <code>python -m residents.resume_studio draft {{ job.id }} --llm</code></span>
-</form>
+<div class="page-head">
+  <div>
+    <div class="sub"><a href="/jobs">&larr; Jobs</a></div>
+    <h1 style="margin-top: 2px">{{ job.client_name }}</h1>
+    <div class="row-flex" style="margin-top: 4px">
+      <span class="badge status {{ 'shipped' if job.status == 'shipped' else ('lost' if job.status == 'lost' else job.status) }}">{{ job.status }}</span>
+      <span class="badge tag">job #{{ job.id }}</span>
+      {% if job.contact %}<span class="muted">{{ job.contact }}</span>{% endif %}
+    </div>
+  </div>
+  <span class="spacer"></span>
+  <form method="post" action="/job/{{ job.id }}/generate" data-confirm="Generate offline drafts for this job?">
+    <button class="btn">⚙ Generate drafts (offline)</button>
+  </form>
+  <span class="muted">or <code>python -m residents.resume_studio draft {{ job.id }} --llm</code></span>
+</div>
 
 {% if job.status == 'shipped' %}
-<p class="muted">Job shipped. Fee recorded on the Ledger.</p>
+<div class="card" style="border-left: 4px solid var(--green)">
+  <b class="money">Shipped</b> — fee recorded on the Ledger.
+</div>
 {% elif job.status == 'lost' %}
-<p class="muted">Job marked lost. You can still generate drafts if needed.</p>
+<div class="card" style="border-left: 4px solid var(--slate)">Marked lost — you can still generate drafts if needed.</div>
 {% else %}
-<form method="post" action="/job/{{ job.id }}/ship" class="inline">
-  <label for="amount">Fee received ($)</label>
-  <input type="number" name="amount_usd" id="amount" step="0.01" min="0" required placeholder="60">
-  <button type="submit">Mark shipped + record income</button>
-</form>
-<form method="post" action="/job/{{ job.id }}/lost" class="inline"
-      onsubmit="return confirm('Mark this job as lost?')">
-  <button type="submit" class="danger">Mark lost</button>
-</form>
+<div class="card" style="margin-bottom: 18px">
+  <form method="post" action="/job/{{ job.id }}/ship" class="filter-bar" style="margin: 0">
+    <label for="amount" class="muted" style="font-weight: 600">Fee received ($)</label>
+    <input type="number" name="amount_usd" id="amount" step="0.01" min="0" required placeholder="60" style="width: 120px">
+    <button class="btn ok" type="submit">Mark shipped + record income</button>
+    <span class="spacer"></span>
+    <button class="btn danger" type="submit" formaction="/job/{{ job.id }}/lost" formmethod="post"
+            data-confirm="Mark this job as lost?">Mark lost</button>
+  </form>
+</div>
 {% endif %}
 
-{% if drafts %}
+<h2>Target</h2>
+<div class="pre">{{ job.target_role }}</div>
+
 <h2>Drafts</h2>
-<table class="table">
-  <thead><tr><th>#</th><th>Kind</th><th>Status</th><th>Version</th><th></th></tr></thead>
-  <tbody>
-    {% for d in drafts %}
-    <tr>
-      <td>{{ d.id }}</td>
-      <td>{{ d.kind }}</td>
-      <td><span class="badge">{{ d.status }}</span></td>
-      <td>{{ d.version }}</td>
-      <td><a href="/draft/{{ d.id }}">review</a></td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+{% if drafts %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>Kind</th><th>Status</th><th class="num">Version</th><th></th></tr></thead>
+    <tbody>
+      {% for d in drafts %}
+      <tr>
+        <td class="mono-cell">{{ d.id }}</td>
+        <td><span class="badge tag">{{ d.kind }}</span></td>
+        <td><span class="badge status {{ d.status }}">{{ d.status }}</span></td>
+        <td class="num">{{ d.version }}</td>
+        <td class="num"><a class="btn sm" href="/draft/{{ d.id }}">review</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">No drafts yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% else %}
-<p class="muted">No drafts yet. Nothing is generated until you trigger it.</p>
+<div class="card empty">No drafts yet. Nothing is generated until you trigger it.</div>
 {% endif %}
 
-<h2>Resume</h2>
-<pre class="pre">{{ job.resume_text }}</pre>
+<h2>Resume / experience</h2>
+<div class="pre">{{ job.resume_text }}</div>
 
 {% if job.answers %}
-<h2>Answers</h2>
-<pre class="pre">{{ job.answers }}</pre>
+<h2>Intake answers</h2>
+<div class="pre">{{ job.answers }}</div>
 {% endif %}
 {% endblock %}

@@ -1,28 +1,42 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Vault</h1>
-<form method="get" action="/vault" class="inline-form">
-  <input type="text" name="q" value="{{ q }}" placeholder="search text">
-  <input type="text" name="tag" value="{{ tag }}" placeholder="tag">
-  <button class="btn" type="submit">Search</button>
-</form>
+<div class="page-head">
+  <div>
+    <h1>Vault</h1>
+    <div class="sub">Research nuggets the residents draw from.</div>
+  </div>
+  <span class="spacer"></span>
+  <form method="get" action="/vault" class="filter-bar" style="margin: 0">
+    <input class="query" type="search" name="q" value="{{ q }}" placeholder="search text…">
+    <input type="search" name="tag" value="{{ tag }}" placeholder="tag" style="width: 150px">
+    <button class="btn" type="submit">Search</button>
+    {% if q or tag %}<a class="btn sm ghost" href="/vault">clear</a>{% endif %}
+  </form>
+</div>
 
-<table>
-  <tr><th>ID</th><th>Title</th><th>Tags</th><th>Source</th><th>When</th></tr>
-  {% for n in rows %}
-  <tr>
-    <td>{{ n['id'] }}</td>
-    <td><b>{{ n['title'] }}</b><div class="snippet">{{ (n['body'] or '')[:160] }}</div></td>
-    <td>
-      {% for t in (n['tags'] or '').split(',') if n['tags'] %}
-      <span class="badge tag">{{ t }}</span>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Nugget</th><th>Tags</th><th>Source</th><th>When</th></tr></thead>
+    <tbody>
+      {% for n in rows %}
+      <tr>
+        <td class="mono-cell">{{ n['id'] }}</td>
+        <td>
+          <b>{{ n['title'] }}</b>
+          <div class="snippet">{{ (n['body'] or '')[:180] }}</div>
+        </td>
+        <td>
+          {% for t in (n['tags'] or '').split(',') if n['tags'] %}
+          <span class="badge tag"><a href="/vault?tag={{ t }}" style="color: inherit">{{ t }}</a></span>
+          {% endfor %}
+        </td>
+        <td>{% if n['source_url'] %}<a href="{{ n['source_url'] }}" rel="noopener noreferrer" target="_blank">open</a>{% endif %}</td>
+        <td class="mono-cell">{{ n['created_at'] }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty"><div class="e-icon">🗄️</div>No nuggets found.</td></tr>
       {% endfor %}
-    </td>
-    <td>{% if n['source_url'] %}<a href="{{ n['source_url'] }}">link</a>{% endif %}</td>
-    <td>{{ n['created_at'] }}</td>
-  </tr>
-  {% else %}
-  <tr><td colspan="5" class="empty">No nuggets found.</td></tr>
-  {% endfor %}
-</table>
+    </tbody>
+  </table>
+</div>
 {% endblock %}

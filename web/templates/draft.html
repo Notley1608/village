@@ -1,54 +1,82 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Draft #{{ draft['id'] }}</h1>
-<p class="draft-meta">
-  {{ draft['resident_name'] }} · <span class="badge zone">{{ draft['zone'] }}</span>
-  · {{ draft['kind'] }} · version {{ draft['version'] }}
-  · <span class="badge status {{ draft['status'] }}">{{ draft['status'] }}</span>
-  · created {{ draft['created_at'] }}
-</p>
+<div class="page-head">
+  <div>
+    <div class="sub"><a href="/queue">&larr; back to queue</a></div>
+    <h1 style="margin-top: 2px">{{ draft['resident_name'] }} · <span class="mono-cell">#{{ draft['id'] }}</span></h1>
+    <div class="row-flex" style="margin-top: 4px">
+      <span class="badge tag">{{ draft['kind'] }}</span>
+      <span class="badge status {{ draft['status'] }}">{{ draft['status'] }}</span>
+      <span class="badge zone-{{ draft['zone'] }}">{{ draft['zone'] }}</span>
+      <span class="muted">v{{ draft['version'] }} · created {{ draft['created_at'] }}</span>
+    </div>
+  </div>
+  <span class="spacer"></span>
+  {% if draft['status'] == 'pending' %}
+  <form method="post" action="/draft/{{ draft['id'] }}/approve" class="inline-form">
+    <button class="btn ok">Approve</button>
+  </form>
+  {% endif %}
+  {% if draft['status'] == 'approved' %}
+  <form method="post" action="/draft/{{ draft['id'] }}/publish" class="inline-form">
+    <button class="btn primary">Publish</button>
+  </form>
+  {% endif %}
+</div>
 
-<form method="post" action="/draft/{{ draft['id'] }}/save" class="edit-form">
-  <textarea name="payload" rows="18">{{ draft['payload'] }}</textarea>
-  <div class="edit-row">
-    <input type="text" name="note" placeholder="polish note (optional)">
-    <button class="btn" type="submit">Save new version</button>
+<form method="post" action="/draft/{{ draft['id'] }}/save" id="editor-form">
+  <div class="editor" data-editor>
+    <div class="pane">
+      <div class="pane-head">
+        <span class="pane-title">Source</span>
+        <div class="tabs">
+          <button type="button" class="tab active" data-tab="edit">Edit</button>
+          <button type="button" class="tab" data-tab="preview">Preview</button>
+        </div>
+      </div>
+      <textarea class="source mono" name="payload" rows="22">{{ draft['payload'] }}</textarea>
+      <div class="edit-row" style="display:flex; gap:8px; padding:10px 14px; border-top:1px solid var(--border); align-items:center">
+        <input type="text" name="note" placeholder="polish note (optional)" style="flex:1">
+        <button class="btn primary" type="submit">Save version {{ draft['version'] + 1 }}</button>
+      </div>
+    </div>
+    <div class="pane" style="display:none">
+      <div class="pane-head"><span class="pane-title">Preview</span></div>
+      <div class="preview"></div>
+    </div>
   </div>
 </form>
 
 <div class="actions">
   {% if draft['status'] == 'pending' %}
-  <form method="post" action="/draft/{{ draft['id'] }}/approve" class="inline-form">
-    <button class="btn ok">Approve</button>
-  </form>
   <form method="post" action="/draft/{{ draft['id'] }}/flag" class="inline-form">
-    <input type="text" name="note" placeholder="rework note">
+    <input type="text" name="note" placeholder="rework note" style="font: inherit; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 8px">
     <button class="btn warn">Flag for rework</button>
-  </form>
-  {% endif %}
-  {% if draft['status'] == 'approved' %}
-  <form method="post" action="/draft/{{ draft['id'] }}/publish" class="inline-form">
-    <button class="btn ok">Publish</button>
   </form>
   {% endif %}
   {% if draft['nugget_id'] %}
   <form method="post" action="/draft/{{ draft['id'] }}/copyback" class="inline-form">
-    <input type="text" name="note" placeholder="highlight to save to vault">
-    <button class="btn">Save to vault</button>
+    <input type="text" name="note" placeholder="highlight to save to vault" style="font: inherit; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 8px">
+    <button class="btn">Save highlight to vault</button>
   </form>
   {% endif %}
 </div>
 
 <h2>History</h2>
-<table>
-  <tr><th>Event</th><th>Actor</th><th>Note</th><th>When</th></tr>
-  {% for e in events %}
-  <tr>
-    <td><span class="badge status {{ e['event'] }}">{{ e['event'] }}</span></td>
-    <td>{{ e['actor'] }}</td>
-    <td>{{ e['note'] or '' }}</td>
-    <td>{{ e['created_at'] }}</td>
-  </tr>
-  {% endfor %}
-</table>
+<div class="table-wrap plain" style="max-width: 640px">
+  <div style="padding: 4px 0">
+    <div class="timeline" style="padding: 14px 16px 0 22px">
+      {% for e in events %}
+      <div class="tl-item">
+        <span class="badge status {{ e['event'] }}">{{ e['event'] }}</span>
+        <span class="muted"> {{ e['actor'] }}</span>
+        {% if e['note'] %}<div class="tl-body">{{ e['note'] }}</div>{% endif %}
+        <div class="tl-when">{{ e['created_at'] }}</div>
+      </div>
+      {% else %}
+      <div class="empty">No history yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
 {% endblock %}

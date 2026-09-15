@@ -27,6 +27,45 @@ def _conn():
     return db.connect()
 
 
+def _active_from_path(path):
+    if path.startswith("/queue") or path.startswith("/draft"):
+        return "queue"
+    if path.startswith("/job"):
+        return "jobs"
+    if path.startswith("/vault"):
+        return "vault"
+    if path.startswith("/ledger"):
+        return "ledger"
+    return "overview"
+
+
+def _base_ctx(request):
+    conn = db.connect()
+    try:
+        pending_count = conn.execute(
+            "SELECT COUNT(*) AS n FROM drafts WHERE status = 'pending'"
+        ).fetchone()["n"]
+        income_total = conn.execute(
+            "SELECT COALESCE(SUM(value), 0) AS s FROM outcomes WHERE metric = 'revenue_usd'"
+        ).fetchone()["s"]
+    finally:
+        conn.close()
+    return {
+        "request": request,
+        "active": _active_from_path(request.url.path),
+        "pending_count": pending_count,
+        "income_total": income_total,
+        "msg": request.query_params.get("msg"),
+        "msg_class": request.query_params.get("msg_class", "ok"),
+    }
+
+
+def render(request, template_name, **ctx):
+    data = _base_ctx(request)
+    data.update(ctx)
+    return templates.TemplateResponse(template_name, data)
+
+
 def _auth_ok(request):
     if not TOKEN:
         return True
@@ -54,9 +93,7 @@ def _startup():
 
 @app.get("/login")
 def login_page(request: Request, next: str = "/"):
-    return templates.TemplateResponse(
-        "login.html", {"request": request, "error": False, "next": next}
-    )
+    return render(request, "login.html", error=False, next=next)
 
 
 @app.post("/login")
@@ -65,9 +102,7 @@ def login(request: Request, key: str = Form(...), next: str = Form("/")):
         response = RedirectResponse(next or "/", status_code=303)
         response.set_cookie("village_key", TOKEN, httponly=True, samesite="lax")
         return response
-    return templates.TemplateResponse(
-        "login.html", {"request": request, "error": True, "next": next}
-    )
+    return render(request, "login.html", error=True, next=next)
 
 
 @app.get("/logout")
@@ -124,50 +159,69 @@ def overview(request: Request):
         """
     ).fetchall()
     conn.close()
-    return templates.TemplateResponse(
+    return render(
+        request,
         "overview.html",
-        {
-            "request": request,
-            "title": "Overview",
-            "residents": residents,
-            "totals_pending": totals_pending,
-            "spend_today": spend_today,
-            "spend_total": spend_total,
-            "income_total": income_total,
-            "events": events,
-        },
+        title="Overview",
+        breadcrumb="<b>Overview</b>",
+        residents=residents,
+        totals_pending=totals_pending,
+        spend_today=spend_today,
+        spend_total=spend_total,
+        income_total=income_total,
+        events=events,
     )
 
 
 @app.get("/queue")
-def queue_page(request: Request, status: str = "pending"):
+def queue_page(request: Request, status: str = "pending", q: str = ""):
     conn = _conn()
-    rows = conn.execute(
-        """
-        SELECT d.*, r.name AS resident_name
-        FROM drafts d JOIN residents r ON r.id = d.resident_id
-        WHERE d.status = ?
-        ORDER BY d.id DESC
-        """,
-        (status,),
-    ).fetchall()
+    params = [status]
+    like = None
+    if q:
+        like = f"%{q}%"
+        rows = conn.execute(
+            """
+            SELECT d.*, r.name AS resident_name
+            FROM drafts d JOIN residents r ON r.id = d.resident_id
+            WHERE d.status = ? AND (d.payload LIKE ? OR CAST(d.id AS TEXT) = ?)
+            ORDER BY d.id DESC
+            """,
+            (status, like, q.strip()),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT d.*, r.name AS resident_name
+            FROM drafts d JOIN residents r ON r.id = d.resident_id
+            WHERE d.status = ?
+            ORDER BY d.id DESC
+            """,
+            (status,),
+        ).fetchall()
     present = [
         r["status"]
         for r in conn.execute("SELECT DISTINCT status FROM drafts ORDER BY status").fetchall()
     ]
+    counts = {}
+    for r in conn.execute("SELECT status, COUNT(*) AS n FROM drafts GROUP BY status").fetchall():
+        counts[r["status"]] = r["n"]
     conn.close()
     statuses = present or KNOWN_STATUSES
     if status not in statuses:
         statuses.append(status)
-    return templates.TemplateResponse(
+    if status not in counts:
+        counts[status] = 0
+    return render(
+        request,
         "queue.html",
-        {
-            "request": request,
-            "title": "Queue",
-            "rows": rows,
-            "status": status,
-            "statuses": statuses,
-        },
+        title="Queue",
+        breadcrumb="<b>Queue</b>",
+        rows=rows,
+        status=status,
+        statuses=statuses,
+        counts=counts,
+        q=q,
     )
 
 
@@ -189,14 +243,13 @@ def draft_page(request: Request, draft_id: int):
         "SELECT * FROM queue_events WHERE draft_id = ? ORDER BY id", (draft_id,)
     ).fetchall()
     conn.close()
-    return templates.TemplateResponse(
+    return render(
+        request,
         "draft.html",
-        {
-            "request": request,
-            "title": f"Draft {draft_id}",
-            "draft": row,
-            "events": events,
-        },
+        title=f"Draft {draft_id}",
+        breadcrumb=f'<a href="/queue">Queue</a> <span style="opacity:.5" >/</span> <b>Draft #{draft_id}</b>',
+        draft=row,
+        events=events,
     )
 
 
@@ -204,7 +257,7 @@ def _back(request):
     return request.headers.get("referer") or "/queue?status=pending"
 
 
-def _transition(request, draft_id, event, note=None):
+def _transition(request, draft_id, event, note=None, msg=None):
     conn = _conn()
     try:
         queue.transition(conn, draft_id, event, actor="human", note=note)
@@ -212,22 +265,26 @@ def _transition(request, draft_id, event, note=None):
         conn.close()
         raise HTTPException(status_code=400, detail=str(exc))
     conn.close()
-    return RedirectResponse(_back(request), status_code=303)
+    back = _back(request)
+    sep = "&" if "?" in back else "?"
+    return RedirectResponse(
+        f"{back}{sep}msg={msg or event}&msg_class=ok", status_code=303
+    )
 
 
 @app.post("/draft/{draft_id}/approve")
 def approve(request: Request, draft_id: int):
-    return _transition(request, draft_id, "approved")
+    return _transition(request, draft_id, "approved", msg="Approved")
 
 
 @app.post("/draft/{draft_id}/flag")
 def flag(request: Request, draft_id: int, note: str = Form("")):
-    return _transition(request, draft_id, "rejected", note=note or None)
+    return _transition(request, draft_id, "rejected", note=note or None, msg="Flagged for rework")
 
 
 @app.post("/draft/{draft_id}/publish")
 def publish(request: Request, draft_id: int):
-    return _transition(request, draft_id, "published")
+    return _transition(request, draft_id, "published", msg="Published")
 
 
 @app.post("/draft/{draft_id}/save")
@@ -247,7 +304,7 @@ def save(request: Request, draft_id: int, payload: str = Form(...), note: str = 
     queue.log_event(conn, draft_id, "edit", actor="human", note=note or "polished")
     conn.commit()
     conn.close()
-    return RedirectResponse(f"/draft/{draft_id}", status_code=303)
+    return RedirectResponse(f"/draft/{draft_id}?msg=Version %d saved&msg_class=ok" % new_version, status_code=303)
 
 
 @app.post("/draft/{draft_id}/copyback")
@@ -280,15 +337,15 @@ def jobs_page(request: Request):
         ).fetchone()
         rows.append((job, drafts["n"], drafts["pending"] or 0))
     conn.close()
-    return templates.TemplateResponse(
-        "jobs.html", {"request": request, "title": "Jobs", "rows": rows}
+    return render(
+        request, "jobs.html", title="Jobs", breadcrumb="<b>Jobs</b>", rows=rows
     )
 
 
 @app.get("/job/new")
 def job_new_page(request: Request):
-    return templates.TemplateResponse(
-        "job_new.html", {"request": request, "title": "New job"}
+    return render(
+        request, "job_new.html", title="New job", breadcrumb='<a href="/jobs">Jobs</a> / <b>New job</b>'
     )
 
 
@@ -327,14 +384,13 @@ def job_page(request: Request, job_id: int):
         raise HTTPException(status_code=404, detail="job not found")
     drafts = resume_studio.job_drafts(conn, job_id)
     conn.close()
-    return templates.TemplateResponse(
+    return render(
+        request,
         "job.html",
-        {
-            "request": request,
-            "title": f"Job {job_id}",
-            "job": job,
-            "drafts": drafts,
-        },
+        title=f"Job {job_id}",
+        breadcrumb=f'<a href="/jobs">Jobs</a> / <b>{job["client_name"]}</b>',
+        job=job,
+        drafts=drafts,
     )
 
 
@@ -347,7 +403,7 @@ def job_generate(request: Request, job_id: int):
         conn.close()
         raise HTTPException(status_code=404, detail="job not found")
     conn.close()
-    return RedirectResponse(f"/job/{job_id}", status_code=303)
+    return RedirectResponse(f"/job/{job_id}?msg=Drafts generated&msg_class=ok", status_code=303)
 
 
 @app.post("/job/{job_id}/ship")
@@ -362,7 +418,9 @@ def job_ship(request: Request, job_id: int, amount_usd: float = Form(...)):
         conn.close()
         raise HTTPException(status_code=400, detail=str(exc))
     conn.close()
-    return RedirectResponse(f"/job/{job_id}", status_code=303)
+    return RedirectResponse(
+        f"/job/{job_id}?msg=Shipped — income recorded&msg_class=ok", status_code=303
+    )
 
 
 @app.post("/job/{job_id}/lost")
@@ -377,7 +435,9 @@ def job_lost(request: Request, job_id: int):
         conn.close()
         raise HTTPException(status_code=400, detail=str(exc))
     conn.close()
-    return RedirectResponse(f"/job/{job_id}", status_code=303)
+    return RedirectResponse(
+        f"/job/{job_id}?msg=Marked as lost&msg_class=warn", status_code=303
+    )
 
 
 @app.get("/vault")
@@ -385,9 +445,8 @@ def vault_page(request: Request, q: str = "", tag: str = ""):
     conn = _conn()
     rows = vault.search(conn, term=q or None, tag=tag or None)
     conn.close()
-    return templates.TemplateResponse(
-        "vault.html",
-        {"request": request, "title": "Vault", "rows": rows, "q": q, "tag": tag},
+    return render(
+        request, "vault.html", title="Vault", breadcrumb="<b>Vault</b>", rows=rows, q=q, tag=tag
     )
 
 
@@ -421,14 +480,13 @@ def ledger_page(request: Request):
         """
     ).fetchall()
     conn.close()
-    return templates.TemplateResponse(
+    return render(
+        request,
         "ledger.html",
-        {
-            "request": request,
-            "title": "Ledger",
-            "rows": rows,
-            "per_resident": per_resident,
-            "income_total": income_total,
-            "outcomes": outcomes,
-        },
+        title="Ledger",
+        breadcrumb="<b>Ledger</b>",
+        rows=rows,
+        per_resident=per_resident,
+        income_total=income_total,
+        outcomes=outcomes,
     )

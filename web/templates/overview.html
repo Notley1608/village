@@ -1,33 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <div class="sub">The village at a glance — review, approve, ship.</div>
+  </div>
+  <span class="spacer"></span>
+  <a class="btn primary" href="/queue">Review queue</a>
+</div>
+
 <section class="metrics">
-  <div class="metric"><span>Pending</span><b>{{ totals_pending }}</b></div>
-  <div class="metric"><span>Spend today</span><b>${{ "%.2f"|format(spend_today) }}</b></div>
-  <div class="metric"><span>Spend total</span><b>${{ "%.2f"|format(spend_total) }}</b></div>
-  <div class="metric done"><span>Income</span><b class="money">${{ "%.2f"|format(income_total) }}</b></div>
+  <div class="metric primary">
+    <span class="m-label">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M7 6h10M7 12h10M7 18h6"/></svg>
+      Pending review
+    </span>
+    <span class="m-value">{{ totals_pending }}</span>
+    <span class="m-meta">{{ income_total > 0 or totals_pending > 0 or spend_total > 0 or ('' if totals_pending else 'all clear') }}</span>
+  </div>
+  <div class="metric warn">
+    <span class="m-label">Spend today</span>
+    <span class="m-value">${{ "%.2f"|format(spend_today) }}</span>
+    <span class="m-meta">cap discipline per resident</span>
+  </div>
+  <div class="metric">
+    <span class="m-label">Spend total</span>
+    <span class="m-value">${{ "%.2f"|format(spend_total) }}</span>
+    <span class="m-meta">lifetime (vault + API)</span>
+  </div>
+  <div class="metric good">
+    <span class="m-label">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.4 5.8L20 9.4l-4.2 4 1.2 6-5-3.2-5 3.2 1.2-6L4 9.4l5.6-.6z"/></svg>
+      Income
+    </span>
+    <span class="m-value money">${{ "%.2f"|format(income_total) }}</span>
+    {% if income_total > 0 %}<span class="m-meta">first dollars banked</span>{% else %}<span class="m-meta">pre-revenue — the point is launch</span>{% endif %}
+  </div>
 </section>
 
 <section class="grid">
   {% for r in residents %}
-  <div class="card zone-{{ r['zone'] }}">
+  <div class="card" style="border-top: 3px solid var(--{{ 'green' if r['zone'] == 'clean' else ('amber' if r['zone'] == 'gray' else 'slate') }})">
     <div class="card-head">
       <span class="name">{{ r['name'] }}</span>
-      <span class="badge zone">{{ r['zone'] }}</span>
+      <span class="spacer"></span>
+      <span class="badge zone-{{ r['zone'] }}">{{ r['zone'] }}</span>
       <span class="badge status {{ r['status'] }}">{{ r['status'] }}</span>
     </div>
     <div class="card-meta">{{ r['niche'] }}</div>
-    <div class="counts">
-      <span>pending <b>{{ r['pending'] }}</b></span>
-      <span>approved <b>{{ r['approved'] }}</b></span>
-      <span>published <b>{{ r['published'] }}</b></span>
-      <span>rejected <b>{{ r['rejected'] }}</b></span>
+    <div class="chips">
+      <span class="chip">pending <b>{{ r['pending'] }}</b></span>
+      <span class="chip">approved <b>{{ r['approved'] }}</b></span>
+      <span class="chip">published <b>{{ r['published'] }}</b></span>
+      <span class="chip">rejected <b>{{ r['rejected'] }}</b></span>
     </div>
+    <div class="bar" title="published progress"><i style="width: {{ r['published'] }}%"></i></div>
     <div class="card-foot">
-      spend today <b>${{ "%.2f"|format(r['spend_today']) }}</b> /
-      cap <b>${{ "%.2f"|format(r['daily_cap_usd']) }}</b>
+      <span>published <b>{{ r['published'] }}</b></span>
+      <span>spent <b>${{ "%.2f"|format(r['spend_today']) }} today</b></span>
+      <span>cap <b>${{ "%.2f"|format(r['daily_cap_usd']) }}</b></span>
       {% if r['launch_budget_days'] %}
-        · launch <b>{{ r['launch_budget_days'] }}d</b>
-        {% if r['launch_days_used'] is not none %} ({{ r['launch_days_used'] }}d used){% endif %}
+      <span>launch <b>{{ r['launch_days_used'] if r['launch_days_used'] is not none else 0 }}/{{ r['launch_budget_days'] }}d</b></span>
       {% endif %}
     </div>
   </div>
@@ -35,21 +68,29 @@
 </section>
 
 <section>
-  <h2>Recent activity</h2>
-  <table>
-    <tr><th>Event</th><th>Draft</th><th>Resident</th><th>Actor</th><th>Note</th><th>When</th></tr>
-    {% for e in events %}
-    <tr>
-      <td><span class="badge status {{ e['event'] }}">{{ e['event'] }}</span></td>
-      <td><a href="/draft/{{ e['draft_id'] }}">#{{ e['draft_id'] }} {{ e['draft_kind'] }}</a></td>
-      <td>{{ e['resident_name'] }}</td>
-      <td>{{ e['actor'] }}</td>
-      <td>{{ e['note'] or '' }}</td>
-      <td>{{ e['created_at'] }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="6" class="empty">No activity yet.</td></tr>
-    {% endfor %}
-  </table>
+  <div class="page-head" style="margin-bottom: 10px">
+    <h2 style="margin: 0">Recent activity</h2>
+    <span class="spacer"></span>
+    <a class="btn sm" href="/queue">view queue</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Event</th><th>Draft</th><th>Resident</th><th>Actor</th><th>Note</th><th>When</th></tr></thead>
+      <tbody>
+        {% for e in events %}
+        <tr>
+          <td><span class="badge status {{ e['event'] }}">{{ e['event'] }}</span></td>
+          <td><a href="/draft/{{ e['draft_id'] }}"><span class="mono-cell">#{{ e['draft_id'] }}</span> {{ e['draft_kind'] }}</a></td>
+          <td>{{ e['resident_name'] }}</td>
+          <td>{{ e['actor'] }}</td>
+          <td class="snippet">{{ e['note'] or '' }}</td>
+          <td class="mono-cell">{{ e['created_at'] }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty"><div class="e-icon">🌱</div>No activity yet — the village is still waking up.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endblock %}
