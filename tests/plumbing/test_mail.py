@@ -72,7 +72,13 @@ def test_digest_body_empty():
 
 def test_html_body_renders_cards_and_escapes(db_conn, resident):
     queue.create_draft(db_conn, resident["id"], "cover_letter", '<script>alert("x")</script> sample')
-    drafts = db_conn.execute("SELECT * FROM drafts WHERE status = 'pending'").fetchall()
+    drafts = db_conn.execute(
+        """
+        SELECT d.*, r.name AS resident_name
+        FROM drafts d JOIN residents r ON r.id = d.resident_id
+        WHERE d.status = 'pending'
+        """
+    ).fetchall()
     html = mail.html_body(drafts)
     assert "Cover letter" in html
     assert "test_resident" in html
