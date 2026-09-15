@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="metrics">
+  <div class="metric"><span>Pending</span><b>{{ totals_pending }}</b></div>
+  <div class="metric"><span>Spend today</span><b>${{ "%.2f"|format(spend_today) }}</b></div>
+  <div class="metric"><span>Spend total</span><b>${{ "%.2f"|format(spend_total) }}</b></div>
+</section>
+
+<section class="grid">
+  {% for r in residents %}
+  <div class="card zone-{{ r['zone'] }}">
+    <div class="card-head">
+      <span class="name">{{ r['name'] }}</span>
+      <span class="badge zone">{{ r['zone'] }}</span>
+      <span class="badge status {{ r['status'] }}">{{ r['status'] }}</span>
+    </div>
+    <div class="card-meta">{{ r['niche'] }}</div>
+    <div class="counts">
+      <span>pending <b>{{ r['pending'] }}</b></span>
+      <span>approved <b>{{ r['approved'] }}</b></span>
+      <span>published <b>{{ r['published'] }}</b></span>
+      <span>rejected <b>{{ r['rejected'] }}</b></span>
+    </div>
+    <div class="card-foot">
+      spend today <b>${{ "%.2f"|format(r['spend_today']) }}</b> /
+      cap <b>${{ "%.2f"|format(r['daily_cap_usd']) }}</b>
+      {% if r['launch_budget_days'] %}
+        · launch <b>{{ r['launch_budget_days'] }}d</b>
+        {% if r['launch_days_used'] is not none %} ({{ r['launch_days_used'] }}d used){% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+<section>
+  <h2>Recent activity</h2>
+  <table>
+    <tr><th>Event</th><th>Draft</th><th>Resident</th><th>Actor</th><th>Note</th><th>When</th></tr>
+    {% for e in events %}
+    <tr>
+      <td><span class="badge status {{ e['event'] }}">{{ e['event'] }}</span></td>
+      <td><a href="/draft/{{ e['draft_id'] }}">#{{ e['draft_id'] }} {{ e['draft_kind'] }}</a></td>
+      <td>{{ e['resident_name'] }}</td>
+      <td>{{ e['actor'] }}</td>
+      <td>{{ e['note'] or '' }}</td>
+      <td>{{ e['created_at'] }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="empty">No activity yet.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

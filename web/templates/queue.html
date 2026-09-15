@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Queue</h1>
+<form method="get" action="/queue" class="inline-form">
+  <label>Status</label>
+  <select name="status" onchange="this.form.submit()">
+    {% for s in statuses %}
+    <option value="{{ s }}" {% if s == status %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<table>
+  <tr><th>ID</th><th>Resident</th><th>Kind</th><th>Snippet</th><th>Status</th><th>When</th><th>Actions</th></tr>
+  {% for d in rows %}
+  <tr>
+    <td><a href="/draft/{{ d['id'] }}">#{{ d['id'] }}</a></td>
+    <td>{{ d['resident_name'] }}</td>
+    <td>{{ d['kind'] }}</td>
+    <td class="snippet">{{ (d['payload'] or '')[:80]|replace('\n', ' ') }}</td>
+    <td><span class="badge status {{ d['status'] }}">{{ d['status'] }}</span></td>
+    <td>{{ d['created_at'] }}</td>
+    <td>
+      <a class="btn" href="/draft/{{ d['id'] }}">view</a>
+      {% if d['status'] == 'pending' %}
+      <form method="post" action="/draft/{{ d['id'] }}/approve" class="inline-form">
+        <button class="btn ok">approve</button>
+      </form>
+      <form method="post" action="/draft/{{ d['id'] }}/flag" class="inline-form">
+        <input type="text" name="note" placeholder="rework note">
+        <button class="btn warn">flag</button>
+      </form>
+      {% endif %}
+      {% if d['status'] == 'approved' %}
+      <form method="post" action="/draft/{{ d['id'] }}/publish" class="inline-form">
+        <button class="btn ok">publish</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="empty">No drafts with status '{{ status }}'.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

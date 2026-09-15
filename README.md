@@ -46,6 +46,20 @@ Usage:
 The scheduler will run these automatically; IMAP `uid` tracking in SQLite
 (`processed_emails`) makes polling idempotent.
 
+## Dashboard (localhost)
+
+FastAPI + Jinja2 dashboard. Views the residents/queue/vault/ledger and is the
+polish-editing surface. Residents are auto-seeded from `config.yaml` on startup
+(no agents run yet).
+
+```bash
+.venv/bin/python -m web.run          # http://127.0.0.1:8000
+.venv/bin/python -m web.seed demo    # OPTIONAL: sample drafts/nuggets/spend to preview pages
+```
+
+Optional auth: set `DASHBOARD_TOKEN` in `.env` (login page collects it). Leave
+empty for localhost-only use, auth disabled.
+
 ## Tests
 
 ```bash

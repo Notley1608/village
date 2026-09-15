@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Vault</h1>
+<form method="get" action="/vault" class="inline-form">
+  <input type="text" name="q" value="{{ q }}" placeholder="search text">
+  <input type="text" name="tag" value="{{ tag }}" placeholder="tag">
+  <button class="btn" type="submit">Search</button>
+</form>
+
+<table>
+  <tr><th>ID</th><th>Title</th><th>Tags</th><th>Source</th><th>When</th></tr>
+  {% for n in rows %}
+  <tr>
+    <td>{{ n['id'] }}</td>
+    <td><b>{{ n['title'] }}</b><div class="snippet">{{ (n['body'] or '')[:160] }}</div></td>
+    <td>
+      {% for t in (n['tags'] or '').split(',') if n['tags'] %}
+      <span class="badge tag">{{ t }}</span>
+      {% endfor %}
+    </td>
+    <td>{% if n['source_url'] %}<a href="{{ n['source_url'] }}">link</a>{% endif %}</td>
+    <td>{{ n['created_at'] }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="empty">No nuggets found.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

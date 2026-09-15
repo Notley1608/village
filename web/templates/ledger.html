@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Ledger</h1>
+
+<h2>Spend totals per resident</h2>
+<table>
+  <tr><th>Resident</th><th>Total spend</th></tr>
+  {% for r in per_resident %}
+  <tr><td>{{ r['name'] }}</td><td>${{ "%.2f"|format(r['total']) }}</td></tr>
+  {% else %}
+  <tr><td colspan="2" class="empty">No ledger entries.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Last 14 days</h2>
+<table>
+  <tr><th>Day</th><th>Resident</th><th>Spend</th></tr>
+  {% for row in rows %}
+  <tr><td>{{ row['day'] }}</td><td>{{ row['resident'] }}</td><td>${{ "%.2f"|format(row['spend']) }}</td></tr>
+  {% else %}
+  <tr><td colspan="3" class="empty">No spend recorded yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Outcomes</h2>
+<table>
+  <tr><th>Resident</th><th>Metric</th><th>Value</th><th>Asset</th><th>When</th></tr>
+  {% for o in outcomes %}
+  <tr>
+    <td>{{ o['resident'] }}</td>
+    <td>{{ o['metric'] }}</td>
+    <td>{{ o['value'] }}</td>
+    <td>{{ o['asset_ref'] or '' }}</td>
+    <td>{{ o['at'] }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="empty">No outcomes yet.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}
