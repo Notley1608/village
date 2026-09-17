@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="sub"><a href="/agents">&larr; Agents</a></div>
+    <h1 style="margin-top: 2px">{{ resident['name'] }}</h1>
+    <div class="row-flex" style="margin-top: 4px">
+      <span class="badge zone-{{ resident['zone'] }}">{{ resident['zone'] }}</span>
+      <span class="badge status {{ resident['status'] }}">{{ resident['status'] }}</span>
+      <span class="muted">{{ resident['niche'] }}</span>
+      {% if agent_cfg.get('autonomous') %}<span class="badge tag">autonomous drafts</span>{% endif %}
+    </div>
+  </div>
+  <span class="spacer"></span>
+  <a class="btn" href="/agents/{{ resident['name'] }}/queue">Queue</a>
+  <a class="btn" href="/agents/{{ resident['name'] }}/vault">Vault</a>
+</div>
+
+<section class="metrics">
+  <div class="metric primary">
+    <span class="m-label">Pending review</span>
+    <span class="m-value">{{ counts.get('pending', 0) }}</span>
+    <span class="m-meta">next decisions</span>
+  </div>
+  <div class="metric">
+    <span class="m-label">Approved</span>
+    <span class="m-value">{{ counts.get('approved', 0) }}</span>
+    <span class="m-meta">ready to publish</span>
+  </div>
+  <div class="metric">
+    <span class="m-label">Published</span>
+    <span class="m-value">{{ counts.get('published', 0) }}</span>
+    <span class="m-meta">shipped output</span>
+  </div>
+  <div class="metric good">
+    <span class="m-label">Income</span>
+    <span class="m-value money">${{ "%.2f"|format(agent_income) }}</span>
+    {% if spend_today > 0 %}<span class="m-meta">spent ${{ "%.2f"|format(spend_today) }} today</span>{% else %}<span class="m-meta">no spend today</span>{% endif %}
+  </div>
+</section>
+
+<h2>Workstreams</h2>
+<div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin-bottom: 20px">
+  {% for ws, counts in workstreams %}
+  <a href="/agents/{{ resident['name'] }}/queue?workstream={{ ws['name'] }}" style="text-decoration: none; color: inherit">
+    <div class="card">
+      <div class="card-head"><span class="name" style="font-size: 14px">{{ ws['name'] }}</span></div>
+      <div class="chips" style="margin-top: 8px">
+        <span class="chip">pending <b>{{ counts.get('pending', 0) }}</b></span>
+        <span class="chip">approved <b>{{ counts.get('approved', 0) }}</b></span>
+        <span class="chip">published <b>{{ counts.get('published', 0) }}</b></span>
+      </div>
+      <div class="bar"><i style="width: {{ counts.get('published', 0) }}%"></i></div>
+      <div class="card-foot">
+        {% for kind in ws['kinds'] %}<span class="badge tag">{{ kind }}</span>{% endfor %}
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+{% if recent %}
+<h2>Needs review</h2>
+<div class="table-wrap" style="margin-bottom: 20px">
+  <table>
+    <thead><tr><th>ID</th><th>Workstream</th><th>Excerpt</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for d in recent %}
+      <tr>
+        <td><a href="/draft/{{ d['id'] }}"><span class="mono-cell">#{{ d['id'] }}</span></a></td>
+        <td><span class="badge tag">{{ d['kind'] }}</span></td>
+        <td class="snippet">{{ (d['payload'] or '')[:80]|replace('\\n', ' ') }}</td>
+        <td><span class="badge status {{ d['status'] }}">{{ d['status'] }}</span></td>
+        <td class="num" style="white-space: nowrap">
+          <a class="btn sm" href="/draft/{{ d['id'] }}">review</a>
+          {% if d['status'] == 'pending' %}
+          <form method="post" action="/draft/{{ d['id'] }}/approve" class="inline-form">
+            <button class="btn sm ok">approve</button>
+          </form>
+          {% endif %}
+          {% if d['status'] == 'approved' %}
+          <form method="post" action="/draft/{{ d['id'] }}/publish" class="inline-form">
+            <button class="btn sm primary">publish</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="grid" style="grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 20px">
+  <div>
+    <div class="page-head" style="margin-bottom: 10px">
+      <h2 style="margin: 0">Vault</h2>
+      <span class="spacer"></span>
+      <a class="btn sm" href="/agents/{{ resident['name'] }}/vault">browse all</a>
+    </div>
+    <div class="card">
+      <div class="m-value" style="font-size: 20px">{{ vault_rows|length }}</div>
+      <div class="card-foot">research nuggets</div>
+      {% if vault_tags %}
+      <div class="chips" style="margin-top: 10px">
+        {% for t in vault_tags %}
+        <a class="pill" href="/agents/{{ resident['name'] }}/vault?tag={{ t }}">{{ t }}</a>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<h2>Activity</h2>
+<div class="table-wrap plain" style="max-width: 640px">
+  <div class="timeline" style="padding: 14px 16px 6px 22px">
+    {% for e in events %}
+    <div class="tl-item">
+      <span class="badge status {{ e['event'] }}">{{ e['event'] }}</span>
+      <span class="muted"> #{{ e['draft_id'] }} {{ e['draft_kind'] }} · {{ e['actor'] }}</span>
+      {% if e['note'] %}<div class="tl-body">{{ e['note'] }}</div>{% endif %}
+      <div class="tl-when">{{ e['created_at'] }}</div>
+    </div>
+    {% else %}
+    <div class="empty">No activity yet.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

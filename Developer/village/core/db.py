@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from typing import Optional
 
 DB_PATH = os.environ.get("VILLAGE_DB", os.path.join(os.path.dirname(__file__), "store.sqlite"))
 
@@ -131,72 +132,54 @@ CREATE INDEX IF NOT EXISTS idx_escalations_status ON escalations(status);
 """
 
 
-def connect(path=None):
+def connect(path: Optional[str] = None) -> sqlite3.Connection:
     conn = sqlite3.connect(path if path is not None else DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
-    _ensure_schema(conn)
     return conn
 
 
-def _ensure_schema(conn):
-    """Idempotent guard: if the DB file is empty or missing core tables, run the schema."""
-    cur = conn.execute(
-        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('residents', 'nuggets', 'drafts')"
-    ).fetchone()
-    if cur and cur[0] < 3:
-        conn.executescript(SCHEMA)
-        conn.commit()
-
-
-def _migrate(conn):
-    """Migrate older DBs that predate the current schema.
-
-    The test suite creates a DB with a pre-migration drafts table (no job_id).
-    This brings it up to date so the rest of the system sees the column.
-    """
-    cols = [row["name"] for row in conn.execute("PRAGMA table_info(drafts)").fetchall()]
-    if "job_id" not in cols:
-        conn.execute("ALTER TABLE drafts ADD COLUMN job_id INTEGER REFERENCES jobs(id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_drafts_job ON drafts(job_id)")
+def _migrate(conn: sqlite3.Connection) -> None:
     cols = [row["name"] for row in conn.execute("PRAGMA table_info(residents)").fetchall()]
     if "format" not in cols:
         conn.execute("ALTER TABLE residents ADD COLUMN format TEXT")
     if "proven" not in cols:
         conn.execute("ALTER TABLE residents ADD COLUMN proven INTEGER NOT NULL DEFAULT 0")
-    for tbl in ("escalations", "assets"):
-        if tbl not in {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}:
-            if tbl == "escalations":
-                conn.executescript("""
-                CREATE TABLE IF NOT EXISTS escalations (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    resident_id  INTEGER REFERENCES residents(id),
-                    kind         TEXT NOT NULL,
-                    title        TEXT NOT NULL,
-                    body         TEXT NOT NULL,
-                    status       TEXT NOT NULL DEFAULT 'pending',
-                    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-                    resolved_at  TEXT
-                );
-                CREATE INDEX IF NOT EXISTS idx_escalations_status ON escalations(status);
-                """)
-            else:
-                conn.executescript("""
-                CREATE TABLE IF NOT EXISTS assets (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    resident_id  INTEGER NOT NULL REFERENCES residents(id),
-                    draft_id     INTEGER REFERENCES drafts(id),
-                    platform     TEXT NOT NULL,
-                    asset_ref    TEXT,
-                    published_at TEXT,
-                    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
-                );
-                CREATE INDEX IF NOT EXISTS idx_assets_resident ON assets(resident_id);
-                """)
+    dcols = [row["name"] for row in conn.execute("PRAGMA table_info(drafts)").fetchall()]
+    if "job_id" not in dcols:
+        conn.execute("ALTER TABLE drafts ADD COLUMN job_id INTEGER REFERENCES jobs(id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_drafts_job ON drafts(job_id)")
+    if "escalations" not in {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}:
+        conn.executescript("""
+        CREATE TABLE IF NOT EXISTS escalations (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            resident_id  INTEGER REFERENCES residents(id),
+            kind         TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            body         TEXT NOT NULL,
+            status       TEXT NOT NULL DEFAULT 'pending',
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at  TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_escalations_status ON escalations(status);
+        """)
+    if "assets" not in {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}:
+        conn.executescript("""
+        CREATE TABLE IF NOT EXISTS assets (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            resident_id  INTEGER NOT NULL REFERENCES residents(id),
+            draft_id     INTEGER REFERENCES drafts(id),
+            platform     TEXT NOT NULL,
+            asset_ref    TEXT,
+            published_at TEXT,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_assets_resident ON assets(resident_id);
+        """)
 
 
-def init_db(path=None):
+def init_db(path: Optional[str] = DB_PATH) -> None:
     conn = connect(path)
     conn.executescript(SCHEMA)
     _migrate(conn)

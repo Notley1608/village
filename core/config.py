@@ -20,3 +20,14 @@ def resident_by_name(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
         if r["name"] == name:
             return r
     raise KeyError(name)
+
+
+def workstreams_of(cfg: Dict[str, Any], name: str) -> list:
+    return resident_by_name(cfg, name).get("workstreams", [])
+
+
+def workstream_for_kind(cfg: Dict[str, Any], name: str, kind: str) -> str:
+    for ws in workstreams_of(cfg, name):
+        if kind in ws.get("kinds", []):
+            return ws["name"]
+    return "Other"

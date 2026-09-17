@@ -155,6 +155,13 @@ def send(subject, body, to=None, html=None):
         server.send_message(message)
 
 
+def send_escalation(resident_name, kind, title, body):
+    """Send a short escalation email to the configured review address."""
+    subject = f"Village escalation [{kind}] {title}"
+    digest = f"Escalation: {title}\nKind: {kind}\nResident: {resident_name}\n\n{body}"
+    send(subject, digest)
+
+
 def _pending_drafts(conn):
     return conn.execute(
         """
@@ -189,8 +196,7 @@ def _is_processed(conn, uid, mailbox=MAILBOX):
 
 def _mark_processed(conn, uid, mailbox=MAILBOX):
     conn.execute(
-        "INSERT OR IGNORE INTO processed_emails (mailbox, uid) VALUES (?, ?)",
-        (mailbox, uid),
+        "INSERT OR IGNORE INTO processed_emails (mailbox, uid) VALUES (?, ?)", (mailbox, uid)
     )
     conn.commit()
 

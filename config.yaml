@@ -1,14 +1,25 @@
+# Village — content revenue ecosystem (replaced with short-form video + audience-growth model)
+# Orchestrator: Hermes Agent (content-orchestrator skill). This file is the resident registry
+# the orchestrator reads at Step 0 of the operating loop.
+
 village:
   timezone: Australia/Sydney
-  model: gemini-3.6-flash
+  model: gemini-3.6-flash   # fallback LLM for in-Python drafting where Hermes delegates to builder
   free_tier_first: true
 
 ledger:
-  daily_cap_default_usd: 0.00
+  # Hard ceiling from the master prompt: $50/mo combined across all tools/APIs/platforms.
+  monthly_cap_usd: 50.00
+  # Per-cycle cap is set by the human when approving a cycle; Hermes proposes, human approves.
+  # This is the per-cycle cap currently approved (updated by human, read by ledger.kill_switch).
+  per_cycle_cap_usd: 0.00
+  # Autonomous spend is $0 until a niche clears the proven-profitable bar AND the human marks it.
+  autonomous_spend_usd: 0.00
   launch_budget_days:
-    directory: 90
-    shorts: 120
-    resume_studio: 0
+    shorts: 120       # burn budget to age accounts + find format
+    audience_growth: 60
+  # Kill switch: any spend attempt above per_cycle_cap_usd halts the whole pipeline.
+  kill_switch: true
 
 queue:
   auto_rework_attempts: 1
@@ -19,60 +30,99 @@ queue:
     - rejected
     - rework
     - killed
+  # Human-gated: nothing auto-publishes. Publish = explicit human transition.
+  publish_human_only: true
 
+# Revenue-generating channels (not orchestrator residents — they are monetization destinations).
+revenue_channels:
+  - name: youtube_partner       # AdSense/YPP + affiliate links in descriptions
+    payout: PayPal
+    identity: personal
+  - name: tiktok_creator        # TikTok Creator Rewards / affiliate
+    payout: PayPal
+    identity: personal
+  - name: instagram_reels       # brand deals / affiliate (later)
+    payout: PayPal
+    identity: personal
+
+# Orchestrator residents = content niches the Hermes loop plans, produces, and reviews.
 residents:
-  - name: resume_studio
-    zone: clean
-    niche: resume_and_linkedin
-    daily_cap_usd: 0.00
-    launch_budget_days: 0
-    publish_target: manual  # you ship to client; PayPal invoice
-    cadence_per_week: 2
-  - name: directory
-    zone: gray
-    niche: ai_and_automation_tools
-    daily_cap_usd: 0.00
-    launch_budget_days: 90
-    publish_target: astro_static
-    cadence_per_week: 3
-    autonomous: true  # scheduler may draft for this resident; publish stays human
-    launch_volume:
-      money_pages: 10
-      hub_pages: 5
-    site:
-      name: Tooldeck
-      tagline: AI & automation tools by use case
-      url: https://tooldeck.example.com  # replace with real domain at Phase 2 deploy
-      # Affiliate links: tool name -> your tracking URL. Empty until you join programs.
-      # Links fall back to the tool's plain URL when absent.
-      affiliate_links: {}
-      money_keywords:
-        - AI meeting notes
-        - AI resume builder
-        - AI code review
-        - AI email writing
-        - AI image generation
-        - AI video editing
-        - AI customer support
-        - AI spreadsheet automation
-  - name: shorts
-    zone: gray
+  - name: shorts_history
+    module: shorts
+    zone: gray                 # separate accounts/identity, burnable
     niche: history_and_weird_facts
+    format:                    # tested per cycle; not fixed — pick from data
+      - faceless_narrated
+      - text_on_screen
+      - ai_avatar
+      - clip_compilation
     daily_cap_usd: 0.00
     launch_budget_days: 120
-    publish_target: youtube_oauth
+    publish_target: youtube_oauth   # plus cross-post to TikTok/Reels after human review
     cadence_per_week: 3
+    autonomous: false              # drafts only; publish is human-gated
+    workstreams:
+      - name: Short scripts + assembly
+        kinds: [short_script, storyboard, asset_manifest]
     production:
       style: stock_loops_captions
       tts: free_local
+      disclosure: case_by_case     # decided per piece, logged to vault
 
-telegram:
-  pings: minimal  # ready-to-review + hard failures only
-  rework_on_flag: true
-  approve_button: true
-  flag_button: true
+  - name: shorts_ai_tools
+    module: shorts
+    zone: gray
+    niche: ai_and_automation_tools      # companion to the old directory — short-form, not long-form
+    format:
+      - faceless_narrated
+      - text_on_screen
+    daily_cap_usd: 0.00
+    launch_budget_days: 60
+    publish_target: youtube_oauth
+    cadence_per_week: 3
+    autonomous: false
+    workstreams:
+      - name: Short scripts + assembly
+        kinds: [short_script, storyboard, asset_manifest]
+    production:
+      style: stock_loops_captions
+      tts: free_local
+      disclosure: case_by_case
+
+  - name: audience_growth
+    zone: gray
+    niche: audience_growth_experiment     # test format/tone/hook variants to learn what the algo rewards
+    format:
+      - text_on_screen
+      - faceless_narrated
+    daily_cap_usd: 0.00
+    launch_budget_days: 60
+    publish_target: youtube_oauth
+    cadence_per_week: 5
+    autonomous: false
+    workstreams:
+      - name: Hook + format experiments
+        kinds: [short_script, storyboard, asset_manifest]
+    production:
+      style: stock_loops_captions
+      tts: free_local
+      disclosure: case_by_case
+
+# Escalation routing: mirrors every escalation into Ecosystem/Escalations/ in the vault
+# AND (when wired) to whatever chat channel the human is watching.
+escalations:
+  always_requires_human_approval:
+    - creating any new platform or API account
+    - any single spend that would exceed the per-cycle cap
+    - any change to content niche or creative direction
+    - publishing any content
+  # Proven-profitable clearance is a PROPOSAL, routed as an escalation, never self-executing.
+  proven_profitable_bar: "views >= threshold Hermes proposes each cycle from current platform benchmarks AND revenue >= that cycle's costs (breakeven)"
 
 vault:
   model: nugget_graph
   copyback_on_polish: true
   editable_copyback: true
+  # Operational research store (SQLite nuggets) — separate from the Obsidian Ecosystem vault
+  # which holds cycle notes, lessons, and escalations.
+  obsidian_vault_path: ~/Obsidian/Ecosystem   # set to your real vault path

@@ -6,8 +6,10 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from core import config as core_config
 from core import db, queue, vault
-from residents import resume_studio
+from core import ledger
+from residents import shorts
 from web import seed
 
 load_dotenv()
@@ -28,10 +30,10 @@ def _conn():
 
 
 def _active_from_path(path):
+    if path.startswith("/agents"):
+        return "agents"
     if path.startswith("/queue") or path.startswith("/draft"):
         return "queue"
-    if path.startswith("/job"):
-        return "jobs"
     if path.startswith("/vault"):
         return "vault"
     if path.startswith("/ledger"):
@@ -125,11 +127,228 @@ def _residents_with_counts(conn):
              WHERE le.resident_id = r.id AND date(le.created_at) = date('now'))                 AS spend_today,
           (SELECT COALESCE(SUM(le.amount_usd), 0) FROM ledger_entries le
              WHERE le.resident_id = r.id)                                                       AS spend_total,
-          CAST(julianday('now') - julianday(r.launch_start_date) AS INTEGER)                    AS launch_days_used
+          CAST(julianday('now') - julianday(r.launch_start_date) AS INTEGER)                    AS launch_days_used,
+          COALESCE(r.proven, 0)                                                                AS proven,
+          COALESCE(r.format, '[]')                                                             AS format
         FROM residents r
         ORDER BY r.id
         """
     ).fetchall()
+
+
+def _scope_kinds(cfg, name, workstream):
+    if not workstream:
+        return None
+    for ws in core_config.workstreams_of(cfg, name):
+        if ws["name"] == workstream:
+            return ws["kinds"]
+    return []
+
+
+def _queue_rows(conn, status, resident_id=None, kinds=None, q=""):
+    sql = (
+        "SELECT d.*, r.name AS resident_name "
+        "FROM drafts d JOIN residents r ON r.id = d.resident_id WHERE d.status = ?"
+    )
+    params = [status]
+    if resident_id is not None:
+        sql += " AND d.resident_id = ?"
+        params.append(resident_id)
+    if kinds is not None:
+        sql += f" AND d.kind IN ({','.join('?' * len(kinds))})"
+        params += list(kinds)
+    if q:
+        sql += " AND (d.payload LIKE ? OR CAST(d.id AS TEXT) = ?)"
+        params += [f"%{q}%", q.strip()]
+    sql += " ORDER BY d.id DESC"
+    return conn.execute(sql, params).fetchall()
+
+
+def _draft_counts_by_status(conn, resident_id=None, kinds=None):
+    sql = "SELECT status, COUNT(*) AS n FROM drafts WHERE 1=1"
+    params = []
+    if resident_id is not None:
+        sql += " AND resident_id = ?"
+        params.append(resident_id)
+    if kinds is not None:
+        sql += f" AND kind IN ({','.join('?' * len(kinds))})"
+        params += list(kinds)
+    sql += " GROUP BY status"
+    return {r["status"]: r["n"] for r in conn.execute(sql, params).fetchall()}
+
+
+def _workstream_summary(conn, cfg, name, rid):
+    ws_list = core_config.workstreams_of(cfg, name)
+    covered = set()
+    out = []
+    for ws in ws_list:
+        counts = _draft_counts_by_status(conn, rid, ws["kinds"])
+        out.append((ws, counts))
+        covered.update(ws["kinds"])
+    kinds_in_db = [
+        r["kind"]
+        for r in conn.execute(
+            "SELECT DISTINCT kind FROM drafts WHERE resident_id = ?", (rid,)
+        ).fetchall()
+    ]
+    other = [k for k in kinds_in_db if k not in covered]
+    if other:
+        out.append(({"name": "Other", "kinds": other}, _draft_counts_by_status(conn, rid, other)))
+    return out
+
+
+def _agent_income(conn, rid):
+    return conn.execute(
+        "SELECT COALESCE(SUM(value), 0) AS s FROM outcomes "
+        "WHERE resident_id = ? AND metric IN ('revenue_usd', 'profit_usd')",
+        (rid,),
+    ).fetchone()["s"]
+
+
+@app.get("/agents")
+def agents_page(request: Request):
+    conn = _conn()
+    residents = _residents_with_counts(conn)
+    conn.close()
+    return render(
+        request,
+        "agents.html",
+        title="Agents",
+        breadcrumb="<b>Agents</b>",
+        residents=residents,
+    )
+
+
+@app.get("/agents/{name}")
+def agent_page(request: Request, name: str):
+    cfg = core_config.load_config()
+    conn = _conn()
+    try:
+        r_cfg = core_config.resident_by_name(cfg, name)
+    except KeyError:
+        conn.close()
+        raise HTTPException(status_code=404, detail="agent not found")
+    resident = conn.execute(
+        "SELECT * FROM residents WHERE name = ?", (name,)
+    ).fetchone()
+    if resident is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="agent not seeded")
+    rid = resident["id"]
+    counts = _draft_counts_by_status(conn, rid)
+    ws_summary = _workstream_summary(conn, cfg, name, rid)
+    recent = _queue_rows(conn, "pending", rid, None)
+    recent += _queue_rows(conn, "approved", rid, None)
+    recent = sorted(recent, key=lambda d: d["id"], reverse=True)[:8]
+    vault_rows = conn.execute(
+        "SELECT * FROM nuggets WHERE resident_id = ? ORDER BY id DESC", (rid,)
+    ).fetchall()
+    vault_tags = sorted({
+        t.strip()
+        for n in vault_rows
+        for t in (n["tags"] or "").split(",")
+        if t.strip()
+    })
+    spend_today = conn.execute(
+        "SELECT COALESCE(SUM(amount_usd), 0) AS s FROM ledger_entries "
+        "WHERE resident_id = ? AND date(created_at) = date('now')",
+        (rid,),
+    ).fetchone()["s"]
+    # `/jobs` and `/job/*` routes removed — resume_studio is no longer a resident,
+    # so there is no jobs concept. See `residents/` for the active video-niche residents.
+    events = conn.execute(
+        """
+        SELECT e.*, d.kind AS draft_kind, r.name AS resident_name
+        FROM queue_events e
+        JOIN drafts d ON d.id = e.draft_id
+        JOIN residents r ON r.id = d.resident_id
+        WHERE d.resident_id = ?
+        ORDER BY e.id DESC LIMIT 12
+        """,
+        (rid,),
+    ).fetchall()
+    agent_income = _agent_income(conn, rid)
+    conn.close()
+    return render(
+        request,
+        "agent.html",
+        title=name,
+        breadcrumb=f'<a href="/agents">Agents</a> / <b>{name}</b>',
+        agent_cfg=r_cfg,
+        resident=resident,
+        counts=counts,
+        workstreams=ws_summary,
+        recent=recent,
+        vault_rows=vault_rows,
+        vault_tags=vault_tags,
+        spend_today=spend_today,
+        agent_income=agent_income,
+        events=events,
+    )
+
+
+@app.get("/agents/{name}/queue")
+def agent_queue(request: Request, name: str, status: str = "pending", workstream: str = "", q: str = ""):
+    cfg = core_config.load_config()
+    conn = _conn()
+    try:
+        core_config.resident_by_name(cfg, name)
+        resident = conn.execute("SELECT * FROM residents WHERE name = ?", (name,)).fetchone()
+    except KeyError:
+        conn.close()
+        raise HTTPException(status_code=404, detail="agent not found")
+    if resident is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="agent not seeded")
+    kinds = _scope_kinds(cfg, name, workstream)
+    rows = _queue_rows(conn, status, resident["id"], kinds, q)
+    counts = _draft_counts_by_status(conn, resident["id"], kinds)
+    present = [
+        r["status"]
+        for r in conn.execute("SELECT DISTINCT status FROM drafts ORDER BY status").fetchall()
+    ]
+    conn.close()
+    statuses = present or KNOWN_STATUSES
+    if status not in statuses:
+        statuses.append(status)
+    if status not in counts:
+        counts[status] = 0
+    return render(
+        request,
+        "queue.html",
+        title=f"{name} queue",
+        breadcrumb=f'<a href="/agents">Agents</a> / <a href="/agents/{name}">{name}</a> / <b>Queue</b>',
+        agent=name,
+        rows=rows,
+        status=status,
+        statuses=statuses,
+        counts=counts,
+        q=q,
+        workstream=workstream,
+        workstreams=core_config.workstreams_of(cfg, name),
+        scoped_base=f"/agents/{name}/queue",
+    )
+
+
+@app.get("/agents/{name}/vault")
+def agent_vault(request: Request, name: str, q: str = "", tag: str = ""):
+    conn = _conn()
+    resident = conn.execute("SELECT id FROM residents WHERE name = ?", (name,)).fetchone()
+    if resident is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="agent not seeded")
+    rows = vault.search(conn, term=q or None, tag=tag or None, resident_id=resident["id"])
+    conn.close()
+    return render(
+        request,
+        "vault.html",
+        title=f"{name} vault",
+        breadcrumb=f'<a href="/agents">Agents</a> / <a href="/agents/{name}">{name}</a> / <b>Vault</b>',
+        rows=rows,
+        q=q,
+        tag=tag,
+        scoped_base=f"/agents/{name}/vault",
+    )
 
 
 @app.get("/")
@@ -325,122 +544,6 @@ def toggle_copyback(request: Request, draft_id: int, note: str = Form("")):
     return RedirectResponse(f"/draft/{draft_id}", status_code=303)
 
 
-@app.get("/jobs")
-def jobs_page(request: Request):
-    conn = _conn()
-    jobs = resume_studio.list_jobs(conn)
-    rows = []
-    for job in jobs:
-        drafts = conn.execute(
-            "SELECT COUNT(*) AS n, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending "
-            "FROM drafts WHERE job_id = ?",
-            (job["id"],),
-        ).fetchone()
-        rows.append((job, drafts["n"], drafts["pending"] or 0))
-    conn.close()
-    return render(
-        request, "jobs.html", title="Jobs", breadcrumb="<b>Jobs</b>", rows=rows
-    )
-
-
-@app.get("/job/new")
-def job_new_page(request: Request):
-    return render(
-        request, "job_new.html", title="New job", breadcrumb='<a href="/jobs">Jobs</a> / <b>New job</b>'
-    )
-
-
-@app.post("/job/new")
-def job_create(
-    request: Request,
-    client_name: str = Form(...),
-    target_role: str = Form(...),
-    resume_text: str = Form(...),
-    contact: str = Form(""),
-    answers: str = Form(""),
-):
-    conn = _conn()
-    answers_dict = None
-    lines = [line.strip() for line in answers.splitlines() if line.strip()]
-    if lines:
-        answers_dict = {}
-        for line in lines:
-            if ":" in line:
-                key, _, value = line.partition(":")
-                answers_dict[key.strip()] = value.strip()
-    job_id = resume_studio.add_job(
-        conn, client_name, target_role, resume_text, contact=contact or None,
-        answers=answers_dict or None,
-    )
-    conn.close()
-    return RedirectResponse(f"/job/{job_id}", status_code=303)
-
-
-@app.get("/job/{job_id}")
-def job_page(request: Request, job_id: int):
-    conn = _conn()
-    job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-    if job is None:
-        conn.close()
-        raise HTTPException(status_code=404, detail="job not found")
-    drafts = resume_studio.job_drafts(conn, job_id)
-    conn.close()
-    return render(
-        request,
-        "job.html",
-        title=f"Job {job_id}",
-        breadcrumb=f'<a href="/jobs">Jobs</a> / <b>{job["client_name"]}</b>',
-        job=job,
-        drafts=drafts,
-    )
-
-
-@app.post("/job/{job_id}/generate")
-def job_generate(request: Request, job_id: int):
-    conn = _conn()
-    try:
-        resume_studio.produce(conn, job_id, run_llm=False)
-    except KeyError:
-        conn.close()
-        raise HTTPException(status_code=404, detail="job not found")
-    conn.close()
-    return RedirectResponse(f"/job/{job_id}?msg=Drafts generated&msg_class=ok", status_code=303)
-
-
-@app.post("/job/{job_id}/ship")
-def job_ship(request: Request, job_id: int, amount_usd: float = Form(...)):
-    conn = _conn()
-    try:
-        resume_studio.ship_job(conn, job_id, amount_usd)
-    except KeyError:
-        conn.close()
-        raise HTTPException(status_code=404, detail="job not found")
-    except ValueError as exc:
-        conn.close()
-        raise HTTPException(status_code=400, detail=str(exc))
-    conn.close()
-    return RedirectResponse(
-        f"/job/{job_id}?msg=Shipped — income recorded&msg_class=ok", status_code=303
-    )
-
-
-@app.post("/job/{job_id}/lost")
-def job_lost(request: Request, job_id: int):
-    conn = _conn()
-    try:
-        resume_studio.mark_lost(conn, job_id)
-    except KeyError:
-        conn.close()
-        raise HTTPException(status_code=404, detail="job not found")
-    except ValueError as exc:
-        conn.close()
-        raise HTTPException(status_code=400, detail=str(exc))
-    conn.close()
-    return RedirectResponse(
-        f"/job/{job_id}?msg=Marked as lost&msg_class=warn", status_code=303
-    )
-
-
 @app.get("/vault")
 def vault_page(request: Request, q: str = "", tag: str = ""):
     conn = _conn()
@@ -491,3 +594,89 @@ def ledger_page(request: Request):
         income_total=income_total,
         outcomes=outcomes,
     )
+
+
+def _escalation_list():
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT e.*, r.name AS resident_name FROM escalations e LEFT JOIN residents r ON r.id = e.resident_id ORDER BY e.id DESC"
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "kind": r["kind"],
+                "status": r["status"],
+                "created_at": r["created_at"],
+                "resident_name": r["resident_name"] or "",
+                "source": "dashboard",
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+@app.get("/escalations")
+def escalations_page(request: Request):
+    return render(
+        request,
+        "escalations.html",
+        title="Escalations",
+        breadcrumb="<b>Escalations</b>",
+        escalations=_escalation_list(),
+    )
+
+
+@app.post("/escalations/{esc_id}/approve")
+def approve_escalation(request: Request, esc_id: int):
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT status FROM escalations WHERE id = ?", (esc_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="escalation not found")
+        if row["status"] != "pending":
+            raise HTTPException(status_code=400, detail="escalation not pending")
+        conn.execute("UPDATE escalations SET status = 'approved', resolved_at = datetime('now') WHERE id = ?", (esc_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return RedirectResponse("/escalations?msg=approved&msg_class=ok", status_code=303)
+
+
+@app.post("/escalations/{esc_id}/deny")
+def deny_escalation(request: Request, esc_id: int):
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT status FROM escalations WHERE id = ?", (esc_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="escalation not found")
+        if row["status"] != "pending":
+            raise HTTPException(status_code=400, detail="escalation not pending")
+        conn.execute("UPDATE escalations SET status = 'denied', resolved_at = datetime('now') WHERE id = ?", (esc_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return RedirectResponse("/escalations?msg=denied&msg_class=warn", status_code=303)
+
+
+@app.get("/escalations/{esc_id}")
+def escalation_detail(request: Request, esc_id: int):
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT e.*, r.name AS resident_name FROM escalations e LEFT JOIN residents r ON r.id = e.resident_id WHERE e.id = ?",
+            (esc_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="escalation not found")
+        return render(
+            request,
+            "escalation_detail.html",
+            title=f"Escalation #{esc_id}",
+            breadcrumb="<a href='/escalations'>Escalations</a> / <b>#%d</b>" % esc_id,
+            esc=dict(row),
+        )
+    finally:
+        conn.close()

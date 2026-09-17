@@ -2,20 +2,33 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Review queue</h1>
+    <h1>Review queue{% if agent %}<span class="muted" style="font-weight: 400"> · {{ agent }}</span>{% endif %}</h1>
     <div class="sub">Read, approve, flag, publish. Products only move when you say so.</div>
   </div>
   <span class="spacer"></span>
-  <form method="get" action="/queue" class="filter-bar" style="margin: 0">
+  <form method="get" action="{{ scoped_base or '/queue' }}" class="filter-bar" style="margin: 0">
+    {% if workstream %}<input type="hidden" name="workstream" value="{{ workstream }}">{% endif %}
     <input type="hidden" name="status" value="{{ status }}">
     <input class="query" type="search" name="q" value="{{ q }}" placeholder="search snippets / ids…">
     <button class="btn" type="submit">Filter</button>
   </form>
 </div>
 
+{% if workstreams %}
+<div class="pills" style="margin-bottom: 12px">
+  <a class="pill {{ 'active' if not workstream }}" href="{{ scoped_base or '/queue' }}?status={{ status }}{% if q %}&q={{ q }}{% endif %}">All workstreams</a>
+  {% for ws in workstreams %}
+  <a class="pill {{ 'active' if ws['name'] == workstream }}"
+     href="{{ scoped_base or '/queue' }}?status={{ status }}&workstream={{ ws['name'] }}{% if q %}&q={{ q }}{% endif %}">
+    {{ ws['name'] }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="pills" style="margin-bottom: 18px">
   {% for s in statuses %}
-  <a class="pill {{ 'active' if s == status }}" href="/queue?status={{ s }}{% if q %}&q={{ q }}{% endif %}">{{ s }}
+  <a class="pill {{ 'active' if s == status }}" href="{{ scoped_base or '/queue' }}?status={{ s }}{% if workstream %}&workstream={{ workstream }}{% endif %}{% if q %}&q={{ q }}{% endif %}">{{ s }}
     <span class="n">{{ counts.get(s, 0) }}</span>
   </a>
   {% endfor %}

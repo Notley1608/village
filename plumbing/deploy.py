@@ -85,9 +85,30 @@ ul{{padding-left:20px}}li{{margin:6px 0}}footer{{margin-top:40px;padding-top:14p
 </html>"""
 
 
-def build_site(conn, out_dir, site_name="Tooldeck", site_url=""):
+def _embed_affiliate_links(payload, links):
+    if not links:
+        return payload
+    pat = re.compile(r"^(\s*- \*\*([^*]+)\*\*[^\[]*)\[(.*?)\]\((.*?)\)(.*)$")
+    out = []
+    for line in payload.splitlines():
+        m = pat.match(line)
+        if m and links.get(m.group(2).strip()):
+            out.append(f"{m.group(1)}[{m.group(3)}]({links[m.group(2).strip()]}){m.group(5)}")
+        elif "linked externally" in line:
+            out.append(line.replace("linked externally; links marked with our affiliate tag may earn us a commission",
+                                    "linked externally; some links are affiliate links and may earn us a commission"))
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def build_site(conn, out_dir, site_name="Tooldeck", site_url="", resident_name="directory",
+               affiliate_links=None):
+    rid = conn.execute("SELECT id FROM residents WHERE name = ?", (resident_name,)).fetchone()
     drafts = conn.execute(
-        "SELECT * FROM drafts WHERE status = 'published' ORDER BY id"
+        "SELECT * FROM drafts WHERE status = 'published' "
+        "AND (? IS NULL OR resident_id = ?) ORDER BY id",
+        (rid["id"] if rid else None, rid["id"] if rid else None),
     ).fetchall()
     os.makedirs(out_dir, exist_ok=True)
     pages_dir = os.path.join(out_dir, "pages")
@@ -96,8 +117,9 @@ def build_site(conn, out_dir, site_name="Tooldeck", site_url=""):
     pages = []
     for draft in drafts:
         slug = _slug_draft(draft)
-        title = re.sub(r"^#+\s*", "", draft["payload"].splitlines()[0].strip())
-        body_html = _markdown_to_html(draft["payload"])
+        payload = _embed_affiliate_links(draft["payload"], affiliate_links or {})
+        title = re.sub(r"^#+\s*", "", payload.splitlines()[0].strip())
+        body_html = _markdown_to_html(payload)
         url = f"{site_url}/pages/{slug}.html" if site_url else f"pages/{slug}.html"
         filename = "index.html" if slug == "index" else f"{pages_dir}/{slug}.html"
         with open(filename, "w") as f:
@@ -155,7 +177,10 @@ def deploy(resident_name: str = "directory", out_dir=None, site_url=""):
     out_dir = out_dir or os.path.join(os.path.dirname(__file__), "..", "site")
     conn = db.connect()
     try:
-        return build_site(conn, out_dir, site_name=site_name, site_url=site_url)
+        return build_site(
+            conn, out_dir, site_name=site_name, site_url=site_url, resident_name=resident_name,
+            affiliate_links=(site or {}).get("affiliate_links"),
+        )
     finally:
         conn.close()
 

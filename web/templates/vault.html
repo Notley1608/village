@@ -6,11 +6,11 @@
     <div class="sub">Research nuggets the residents draw from.</div>
   </div>
   <span class="spacer"></span>
-  <form method="get" action="/vault" class="filter-bar" style="margin: 0">
+  <form method="get" action="{{ scoped_base or '/vault' }}" class="filter-bar" style="margin: 0">
     <input class="query" type="search" name="q" value="{{ q }}" placeholder="search text…">
     <input type="search" name="tag" value="{{ tag }}" placeholder="tag" style="width: 150px">
     <button class="btn" type="submit">Search</button>
-    {% if q or tag %}<a class="btn sm ghost" href="/vault">clear</a>{% endif %}
+    {% if q or tag %}<a class="btn sm ghost" href="{{ scoped_base or '/vault' }}">clear</a>{% endif %}
   </form>
 </div>
 
@@ -27,7 +27,7 @@
         </td>
         <td>
           {% for t in (n['tags'] or '').split(',') if n['tags'] %}
-          <span class="badge tag"><a href="/vault?tag={{ t }}" style="color: inherit">{{ t }}</a></span>
+          <span class="badge tag"><a href="{{ scoped_base or '/vault' }}?tag={{ t }}" style="color: inherit">{{ t }}</a></span>
           {% endfor %}
         </td>
         <td>{% if n['source_url'] %}<a href="{{ n['source_url'] }}" rel="noopener noreferrer" target="_blank">open</a>{% endif %}</td>

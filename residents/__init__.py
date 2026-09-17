@@ -1,3 +1,3 @@
-from . import resume_studio, directory, shorts
+from . import shorts
 
-__all__ = ["resume_studio", "directory", "shorts"]
+__all__ = ["shorts"]

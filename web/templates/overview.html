@@ -42,8 +42,9 @@
   {% for r in residents %}
   <div class="card" style="border-top: 3px solid var(--{{ 'green' if r['zone'] == 'clean' else ('amber' if r['zone'] == 'gray' else 'slate') }})">
     <div class="card-head">
-      <span class="name">{{ r['name'] }}</span>
+      <a class="name" href="/agents/{{ r['name'] }}" style="text-decoration: none; color: var(--text)">{{ r['name'] }}</a>
       <span class="spacer"></span>
+      <a class="btn sm ghost" href="/agents/{{ r['name'] }}">open</a>
       <span class="badge zone-{{ r['zone'] }}">{{ r['zone'] }}</span>
       <span class="badge status {{ r['status'] }}">{{ r['status'] }}</span>
     </div>

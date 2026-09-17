@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Residents</h1>
+    <div class="sub">Content niches the orchestrator plans — nothing auto-publishes; publish is human-gated.</div>
+  </div>
+  <span class="spacer"></span>
+  <a class="btn sm" href="/escalations">view escalations</a>
+</div>
+
+<div class="grid">
+  {% for r in residents %}
+  <a href="/agents/{{ r['name'] }}" style="text-decoration: none; color: inherit">
+    <div class="card" style="border-top: 3px solid var(--{{ 'green' if r['zone'] == 'clean' else ('amber' if r['zone'] == 'gray' else 'slate') }}); height: 100%">
+      <div class="card-head">
+        <span class="name">{{ r['name'] }}</span>
+        <span class="spacer"></span>
+        <span class="badge zone-{{ r['zone'] }}">{{ r['zone'] }}</span>
+        <span class="badge status {{ r['status'] }}">{{ r['status'] }}</span>
+        {% if r['proven'] %}<span class="badge ok proven">proven</span>{% endif %}
+      </div>
+      <div class="card-meta">{{ r['niche'] }}</div>
+      <div class="chips">
+        <span class="chip">pending <b>{{ r['pending'] }}</b></span>
+        <span class="chip">approved <b>{{ r['approved'] }}</b></span>
+        <span class="chip">published <b>{{ r['published'] }}</b></span>
+      </div>
+      <div class="bar" title="published progress"><i style="width: {{ r['published'] }}%"></i></div>
+      <div class="card-foot">
+        <span>cap <b>${{ "%.2f"|format(r['daily_cap_usd']) }}</b></span>
+        {% if r['launch_budget_days'] %}
+        <span>launch <b>{{ r['launch_days_used'] if r['launch_days_used'] is not none else 0 }}/{{ r['launch_budget_days'] }}d</b></span>
+        {% endif %}
+        {% if r['format'] %}
+        <span class="muted" style="font-size:11px">formats: {{ r['format'] }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

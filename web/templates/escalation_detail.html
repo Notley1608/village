@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Escalation #{{ esc['id'] }}</h1>
+    <div class="sub">{{ esc['title'] }}</div>
+  </div>
+  <span class="spacer"></span>
+  <a class="btn sm" href="/escalations">back to list</a>
+</div>
+
+<div class="grid" style="grid-template-columns: 1fr">
+  <div class="card">
+    <div class="card-head">
+      <span class="name">{{ esc['title'] }}</span>
+      <span class="spacer"></span>
+      <span class="badge status {{ esc['status'] }}">{{ esc['status'] }}</span>
+      <span class="badge tag">{{ esc['kind'] }}</span>
+    </div>
+    <div class="card-meta">Resident: {{ esc['resident_name'] or 'unassigned' }}</div>
+    <div class="card-foot">
+      <span>created {{ esc['created_at'] }}</span>
+      {% if esc['resolved_at'] %}<span>resolved {{ esc['resolved_at'] }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="pane">
+      <div class="pane-head"><span class="pane-title">Body</span></div>
+      <div class="editor" style="padding: 14px">{{ esc['body'] }}</div>
+    </div>
+    {% if esc['status'] == 'pending' %}
+    <div class="actions" style="margin-top:14px">
+      <form method="post" action="/escalations/{{ esc['id'] }}/approve" class="inline-form">
+        <button class="btn ok">Approve</button>
+      </form>
+      <form method="post" action="/escalations/{{ esc['id'] }}/deny" class="inline-form">
+        <button class="btn warn">Deny</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

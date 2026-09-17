@@ -1,8 +1,7 @@
 import pytest
-
 from core import db, scheduler
 from plumbing import deploy
-from residents import directory
+from residents import shorts
 from web.seed import seed_residents
 
 
@@ -18,7 +17,7 @@ def conn(tmp_path, monkeypatch):
 
 @pytest.fixture
 def tmpvault(conn):
-    directory.seed_use_case(conn)
+    shorts.seed_use_case(conn)
     return conn
 
 
@@ -49,36 +48,49 @@ def test_scheduler_disabled_by_default(monkeypatch):
     assert "disabled" in scheduler.daily_dispatch()
 
 
-def test_scheduler_skips_non_autonomous(no_mail, monkeypatch):
+def test_scheduler_skips_without_delegations(no_mail, monkeypatch):
     monkeypatch.setenv("VILLAGE_ENABLE_SCHEDULER", "1")
     report = scheduler.daily_dispatch()
-    assert "resume_studio: not autonomous (skipped)" in report
-    assert "shorts: not autonomous (skipped)" in report
+    assert "shorts_history: dispatch checked (no new delegations or none matching)" in report
+    assert "shorts_ai_tools: dispatch checked (no new delegations or none matching)" in report
+    assert "audience_growth: dispatch checked (no new delegations or none matching)" in report
 
 
-def test_scheduler_drafts_directory_within_cadence(no_mail, monkeypatch):
+def test_scheduler_runs_on_delegation(no_mail, monkeypatch, tmp_path):
     monkeypatch.setenv("VILLAGE_ENABLE_SCHEDULER", "1")
-    before = db.connect().execute(
-        "SELECT COUNT(*) AS n FROM drafts WHERE kind = 'money_page'"
-    ).fetchone()["n"]
+    import json
+    from pathlib import Path
+    deleg_dir = Path(str(tmp_path)) / "hermes_delegations"
+    deleg_dir.mkdir(parents=True, exist_ok=True)
+    spec = {
+        "job_id": "job-1",
+        "agent": "OPENCODE-BUILDER",
+        "niche": "history_and_weird_facts",
+        "format": "faceless_narrated",
+        "constraints": {"budget": 0.0, "deadline": "2026-12-31T00:00:00Z", "platform_rules": []},
+        "success_criteria": [],
+        "output_contract": "short_script",
+        "vault_log_path": "Ecosystem/Cycles/2026-09-15-job-1.md",
+    }
+    (deleg_dir / "job-1.json").write_text(json.dumps(spec))
+    monkeypatch.setenv("VILLAGE_HERMES_DELEGATIONS_DIR", str(deleg_dir))
     report = scheduler.daily_dispatch()
-    after = db.connect().execute(
-        "SELECT COUNT(*) AS n FROM drafts WHERE kind = 'money_page'"
-    ).fetchone()["n"]
-    assert after - before == 3  # directory cadence_per_week
-    assert "directory: produced 3 money page(s)" in report
-    assert "pending" in report
+    assert "shorts_history: dispatch checked" in report
+    c = db.connect()
+    n = c.execute("SELECT COUNT(*) AS n FROM drafts WHERE status='pending'").fetchone()["n"]
+    assert n >= 1
+    c.close()
 
 
 def test_scheduler_second_run_is_idempotent(no_mail, monkeypatch):
     monkeypatch.setenv("VILLAGE_ENABLE_SCHEDULER", "1")
     scheduler.daily_dispatch()
     before = db.connect().execute(
-        "SELECT COUNT(*) AS n FROM drafts WHERE kind = 'money_page'"
+        "SELECT COUNT(*) AS n FROM drafts WHERE kind = 'short_script'"
     ).fetchone()["n"]
     report = scheduler.daily_dispatch()
     after = db.connect().execute(
-        "SELECT COUNT(*) AS n FROM drafts WHERE kind = 'money_page'"
+        "SELECT COUNT(*) AS n FROM drafts WHERE kind = 'short_script'"
     ).fetchone()["n"]
     assert after == before
-    assert "directory: 3/3 this week (skip)" in report
+    assert "shorts_history: dispatch checked (no new delegations or none matching)" in report
