@@ -39,6 +39,37 @@ def test_pipeline_accepts_spec():
         c.close()
 
 
+def test_pipeline_builds_marketing_copy_alongside_script():
+    """Growth Hacker builds marketing copy in parallel with the Engineer's script."""
+    from core import db
+    from web.seed import seed_residents
+    c = db.connect()
+    try:
+        seed_residents(conn=c)
+        spec = {
+            "job_id": "test-spec-2",
+            "agent": "OPENCODE-BUILDER",
+            "niche": "history_and_weird_facts",
+            "format": "faceless_narrated",
+            "constraints": {"budget": 0.0},
+        }
+        created = shorts.produce(c, spec=spec, run_llm=True)
+        rows = c.execute(
+            "SELECT kind FROM drafts WHERE id IN ({})".format(",".join("?" * len(created))), created
+        ).fetchall()
+        assert {r["kind"] for r in rows} == {"short_script", "marketing_copy"}
+
+        ledger_kinds = {
+            r["kind"]
+            for r in c.execute(
+                "SELECT kind FROM ledger_entries WHERE note = 'delegation test-spec-2'"
+            ).fetchall()
+        }
+        assert ledger_kinds == {"engineer_build", "growth_distribution"}
+    finally:
+        c.close()
+
+
 def test_offline_placeholder_format():
     """Offline placeholder drafts should follow the expected template shape."""
     from core import db

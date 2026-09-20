@@ -28,15 +28,18 @@ def score_signal(signal: dict) -> dict:
     }
 
 
+def audit_signals(signals) -> list:
+    """The Auditor: score every signal and return (signal, scorecard) pairs,
+    best-first, so a Go/No-Go decision is visible for each one — not just
+    the survivors."""
+    scored = [(s, score_signal(s)) for s in signals]
+    return sorted(scored, key=lambda pair: pair[1]["profitability_score"], reverse=True)
+
+
 def mine_topics(conn, signals, resident_id=None) -> list:
     """Score `signals`, keep the ones that pass, write them to the vault as
     nuggets ranked best-first. Returns the created nugget ids in rank order."""
-    scored = [(s, score_signal(s)) for s in signals]
-    passing = sorted(
-        (pair for pair in scored if pair[1]["verdict"] == "pass"),
-        key=lambda pair: pair[1]["profitability_score"],
-        reverse=True,
-    )
+    passing = [pair for pair in audit_signals(signals) if pair[1]["verdict"] == "pass"]
 
     nugget_ids = []
     for signal, scorecard in passing:

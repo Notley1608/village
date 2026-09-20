@@ -20,7 +20,7 @@ from core import config as core_config
 from core import db, ledger, queue, vault
 
 RESIDENT_NAME = "shorts_history"
-OUTPUT_KINDS = ["short_script", "storyboard", "asset_manifest"]
+OUTPUT_KINDS = ["short_script", "storyboard", "asset_manifest", "marketing_copy"]
 
 
 def resident_id(conn) -> int:
@@ -42,6 +42,19 @@ def _default_script_payload(niche: str, fmt: str) -> str:
         f"**Format:** {fmt}\n"
         f"**Generated:** {datetime.now().isoformat()}\n\n"
         f"(placeholder — run with an LLM-backed delegation to produce a real script)\n"
+    )
+
+
+def _default_marketing_payload(niche: str, fmt: str) -> str:
+    """Growth Hacker's offline placeholder: title/description/hashtags for the
+    same delegation, reviewed alongside the script before any distribution."""
+    return (
+        f"# OFFLINE MARKETING COPY — {fmt}\n"
+        f"**Niche:** {niche}\n"
+        f"**Title:** (placeholder — hook for {niche})\n"
+        f"**Description:** (placeholder — run with an LLM-backed delegation for real copy)\n"
+        f"**Hashtags:** #shorts #{niche.replace('_', '')}\n"
+        f"**Generated:** {datetime.now().isoformat()}\n"
     )
 
 
@@ -85,7 +98,11 @@ def produce(conn, spec: dict | None = None, run_llm: bool = False, limit: int | 
         for kind in OUTPUT_KINDS:
             if limit is not None and len(created) >= limit:
                 break
-            payload = _default_script_payload(niche, kind)
+            payload = (
+                _default_marketing_payload(niche, kind)
+                if kind == "marketing_copy"
+                else _default_script_payload(niche, kind)
+            )
             created.append(queue.create_draft(conn, rid, kind, payload))
         return created
 
@@ -99,25 +116,32 @@ def produce(conn, spec: dict | None = None, run_llm: bool = False, limit: int | 
     # In v1 we record LLM spend as $0 until we hook up real billing; the guardrail
     # is structural — the orchestrator sets the budget, we never exceed it.
     created = []
-    kind = "short_script"
+    model = cfg.get("village", {}).get("model", "")
+
+    # Engineer: builds the script/asset. Growth Hacker: builds the marketing
+    # copy for the same delegation, in parallel. Each invoices the Treasurer
+    # under its own ledger kind so spend is attributable per role.
+    script_payload = _default_script_payload(niche, fmt)
+    created.append(queue.create_draft(conn, rid, "short_script", script_payload))
+    marketing_payload = _default_marketing_payload(niche, fmt)
+    created.append(queue.create_draft(conn, rid, "marketing_copy", marketing_payload))
+
     if run_llm:
         # In v1, LLM-backed generation is done by the Node script-generator module.
-        # This path is a stub that records the intent and returns a placeholder;
-        # the real implementation is what OPENCODE-BUILDER delivers.
-        payload = _default_script_payload(niche, fmt)
-        ledger.record_spend(conn, rid, 0.0, model=cfg.get("village", {}).get("model", ""), kind="llm_token_cost", note=f"delegation {job_id}")
-    else:
-        payload = _default_script_payload(niche, fmt)
+        # This path is a stub that records the intent; the real implementation is
+        # what OPENCODE-BUILDER delivers. Spend is $0 until real billing is wired —
+        # the guardrail is structural, not a live budget check.
+        ledger.record_spend(conn, rid, 0.0, model=model, kind="engineer_build", note=f"delegation {job_id}")
+        ledger.record_spend(conn, rid, 0.0, model=model, kind="growth_distribution", note=f"delegation {job_id}")
 
-    created.append(queue.create_draft(conn, rid, kind, payload))
-
-    # Attach the delegation job id to the draft payload for traceability.
+    # Attach the delegation job id to each draft's payload for traceability.
     # The payload is markdown, not JSON, so append it as a text footnote rather
     # than using json_insert (which would reject non-JSON text).
-    conn.execute(
-        "UPDATE drafts SET payload = payload || char(10) || '-- delegation_job_id: ' || ? || char(10) WHERE id = ?",
-        (job_id, created[-1]),
-    )
+    for draft_id in created:
+        conn.execute(
+            "UPDATE drafts SET payload = payload || char(10) || '-- delegation_job_id: ' || ? || char(10) WHERE id = ?",
+            (job_id, draft_id),
+        )
     conn.commit()
     return created
 

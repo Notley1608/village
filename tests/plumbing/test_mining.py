@@ -60,3 +60,14 @@ def test_mine_topics_ranks_best_score_first(db_conn, resident):
 
 def test_mine_topics_no_signals_writes_nothing(db_conn, resident):
     assert mining.mine_topics(db_conn, [], resident_id=resident["id"]) == []
+
+
+def test_audit_signals_reports_go_and_no_go():
+    good = _signal(title="Good idea")
+    bad = _signal(title="Bad idea", est_mrr_usd=1.0, risk_keywords=["trademarked"])
+
+    report = mining.audit_signals([bad, good])
+
+    assert [signal["title"] for signal, _ in report] == ["Good idea", "Bad idea"]
+    assert report[0][1]["verdict"] == "pass"
+    assert report[1][1]["verdict"] == "fail"
